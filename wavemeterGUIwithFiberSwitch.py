@@ -17,7 +17,7 @@ from PyQt5.QtWidgets import QApplication, QDoubleSpinBox, QMainWindow, QGridLayo
     QLabel, QComboBox, QVBoxLayout, QHBoxLayout, QDesktopWidget
 from PyQt5.QtCore import QTimer, Qt, QSize
 import pyqtgraph as pg
-# from bristol_RS422 import BristolRS422
+from bristol_RS422 import BristolRS422
 from PyQt5.QtGui import QFont
 from datetime import datetime
 from time import time
@@ -31,8 +31,8 @@ slack_url = 'https://hooks.slack.com/services/T7V96HJ4R/B02P9E4FDGX/3JxxSmnH5Kq1
 global portnumber
 portnumber = "COM10"  # the usb port to which the wavemeter is connected
 global device
-# device = BristolRS422(portnumber)  # the BristolRS422 python file collects measurements from the Bristol 871a wavemeter
-device = DummyDevice.DummyDevice(np.array([750000, 713289.100, 650000, 508848.922, 508848.402, 508332.499, 467044.500, 462900, 445000, 434912.747, 391016, 365753, 328966, 320008.235, 309602.628, 296387, 282288.730]))
+device = BristolRS422(portnumber)  # the BristolRS422 python file collects measurements from the Bristol 871a wavemeter
+# device = DummyDevice.DummyDevice(np.array([750000, 713289.100, 650000, 508848.922, 508848.402, 508332.499, 467044.500, 462900, 445000, 434912.747, 391016, 365753, 328966, 320008.235, 309602.628, 296387, 282288.730]))
 pg.setConfigOptions(antialias=True)  # antialiasing makes the graphs easier to view
 
 global writeFile
@@ -727,7 +727,7 @@ class MainWindow(QMainWindow):
 
     def createData(self):
         self.wavelength, self.saturation, self.status, self.wmTime = device.get_measurement()
-        print(self.wmTime)
+        #print(self.wmTime)
         global timeStep
         timeStep = time() - self.timeStart
 
