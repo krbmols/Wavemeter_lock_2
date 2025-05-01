@@ -17,32 +17,203 @@ from PyQt5.QtWidgets import QApplication, QDoubleSpinBox, QMainWindow, QGridLayo
     QLabel, QComboBox, QVBoxLayout, QHBoxLayout, QDesktopWidget
 from PyQt5.QtCore import QTimer, Qt, QSize
 import pyqtgraph as pg
-from bristol_RS422 import BristolRS422
+# from bristol_RS422 import BristolRS422
 from PyQt5.QtGui import QFont
 from datetime import datetime
 from time import time
+import DummyDevice
+import zmq
+import copy
+from enum import Enum
 
-global url
-url = 'https://hooks.slack.com/services/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'
+global slack_url
+slack_url = 'https://hooks.slack.com/services/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'
 global portnumber
 portnumber = "COM10"  # the usb port to which the wavemeter is connected
 global device
-device = BristolRS422(portnumber)  # the BristolRS422 python file collects measurements from the Bristol 871a wavemeter
+# device = BristolRS422(portnumber)  # the BristolRS422 python file collects measurements from the Bristol 871a wavemeter
+device = DummyDevice.DummyDevice(np.array([750000, 713289.100, 650000, 508848.922, 508848.402, 508332.499, 467044.500, 462900, 445000, 434912.747, 391016, 365753, 328966, 320008.235, 309602.628, 296387, 282288.730]))
 pg.setConfigOptions(antialias=True)  # antialiasing makes the graphs easier to view
 
 global writeFile
 global saveData
 global dir
 global dir2
+global data_per_channel
+global server
+
 #dir="C:\Bristol"
 dir = "C:\\Users\\Krb-Logging\\wavemeter"
 #dir = "N:\\wavemeterEightChannelLogsYXLiu"
 dir2 = "W:\\FastWavemeterLogs"
 saveData = True
 
+data_lock = threading.Lock()
+wm_error_lock = threading.Lock()
+
+class Server(object):
+    class WorkerRequest(Enum):
+        NoRequest = 0
+        Stop = 1
+
+    def recreate_sock(self):
+        if self.__sock is not None:
+            self.__sock.close()
+        self.__sock = self.__ctx.socket(zmq.ROUTER)
+        self.__sock.bind(self.__url)
+
+    def __init__(self, url: str):
+        # network
+        self.__url = url
+        self.__ctx = zmq.Context()
+        self.__sock = None
+        self.recreate_sock()
+        self.timeout = 500
+         # lock for worker request
+        self.__worker_lock = threading.Lock()
+
+        with self.__worker_lock:
+            self.__worker_req = self.WorkerRequest.NoRequest
+        self.__worker = threading.Thread(target = self.__worker_func)
+        self.__worker.start()
+
+    def stop_worker(self):
+        if hasattr(self, '_Server__worker'):
+            with self.__worker_lock:
+                self.__worker_req = self.WorkerRequest.Stop
+            self.__worker.join()
+        else:
+            return
+        
+    def start_worker(self):
+        if hasattr(self, '_Server__worker'):
+            if self.__worker.is_active():
+                return
+        with self.__worker_lock:
+            self.__worker_req = self.WorkerRequest.NoRequest
+        self.__worker = threading.Thread(target = self.__worker_func)
+        self.__worker.start()
+    
+    def handle_msg(self, addr,  msg_str: str) -> bool:
+        # Method to handle different requests from external clients
+        if msg_str == "get_frequencies":
+            msg_type, rep = self.get_frequencies()
+        elif msg_str == "get_saturations":
+            msg_type, rep = self.get_saturations()
+        else:
+            self.safe_send(addr, [1], [f''])
+            print("Unknown request " + msg_str)
+            return False
+        self.safe_send(addr, msg_type, rep)
+        return True
+    
+    def safe_receive(func):
+        def f(self):
+            try:
+                msg = func(self)
+            except:
+                msg = None
+            return  msg
+        return f
+
+    def safe_process(func):
+        def f(self):
+            try:
+                msg_type, data = func(self)
+            except Exception as e:
+                msg_type = [1]
+                data = ['error: ' + str(e)]
+            return msg_type, data
+        return f
+
+    @safe_receive
+    def safe_recv(self):
+        return self.__sock.recv(zmq.NOBLOCK)
+
+    @safe_receive
+    def safe_recv_string(self):
+        return self.__sock.recv_string(zmq.NOBLOCK)
+
+    def finish_recv(func):
+        def f(self, *args, **kwargs):
+            # finish receiving messages
+            msg = self.safe_recv()
+            while msg is not None:
+                msg = self.safe_recv()
+            func(self, *args, **kwargs)
+        return f
+
+    @finish_recv
+    def safe_send(self, addr, msg_type, msg_list):
+        # send reply
+        self.__sock.send(addr, zmq.SNDMORE)
+        self.__sock.send(b'', zmq.SNDMORE)
+        for idx, item in enumerate(msg_list):
+            if idx == len(msg_list) - 1:
+                flag = 0 
+            else:
+                flag = zmq.SNDMORE
+            if msg_type[idx] == 1:
+                self.__sock.send_string(item, flag)
+            else:
+                self.__sock.send(item, flag)
+        
+    def __check_worker_req(self):
+        with self.__worker_lock:
+            return self.__worker_req
+        
+    def __worker_func(self):
+        # worker function
+        while self.__check_worker_req() != self.WorkerRequest.Stop:
+            if self.__sock.poll(self.timeout) == 0: # in milliseconds
+                continue
+            addr = self.safe_recv()
+            delimit = self.safe_recv_string()
+            msg_str = self.safe_recv_string()
+            if msg_str is None:
+                self.safe_send(addr, [1], ["Send more"])
+            self.handle_msg(addr, msg_str)
+        print("Worker finishing")
+
+    def __del__(self):
+        print("Server is being deleted")
+        self.stop_worker()
+        self.__sock.close()
+        self.__ctx.destroy()
+
+    @safe_process
+    def get_frequencies(self):
+        with data_lock:
+            data = copy.deepcopy(data_per_channel)
+        if len(data) == 0:
+            return [0, 0], [int(0).to_bytes(4,'little'), np.array([], dtype=np.float64).tobytes()]
+        freqs = []
+        for point in data:
+            if point[0] is not None:
+                freqs.append(point[0])
+        if len(freqs) == 0:
+            return [0, 0], [int(0).to_bytes(4,'little'), np.array([], dtype=np.float64).tobytes()]
+        else:
+            return [0, 0], [int(len(freqs)).to_bytes(4, 'little'), np.array(freqs, dtype=np.float64).tobytes()]
+        
+    @safe_process
+    def get_saturations(self):
+        with data_lock:
+            data = copy.deepcopy(data_per_channel)
+        if len(data) == 0:
+            return [0, 0], [int(0).to_bytes(4,'little'), np.array([], dtype=np.float64).tobytes()]
+        freqs = []
+        for point in data:
+            if point[1] is not None:
+                freqs.append(point[1])
+        if len(freqs) == 0:
+            return [0, 0], [int(0).to_bytes(4,'little'), np.array([], dtype=np.float64).tobytes()]
+        else:
+            return [0, 0], [int(len(freqs)).to_bytes(4, 'little'), np.array(freqs, dtype=np.float64).tobytes()]
 
 
 class Channel(QWidget):  # a class for the widgets belonging to a particular channel
+
 
     def __init__(self, target, threshold, parent=None):
         super(Channel, self).__init__(parent)
@@ -206,7 +377,7 @@ class Channel(QWidget):  # a class for the widgets belonging to a particular cha
             self.lockedCheckbox.setChecked(False)
             data = {'text': message1}
 
-            requests.post(url, json=data, verify=False)
+            requests.post(slack_url, json=data, verify=False)
         else:
             pass
 
@@ -233,7 +404,7 @@ class Channel(QWidget):  # a class for the widgets belonging to a particular cha
             message1 = f"{round(self.speed_of_light / self.target, 1)} nm / {round(self.target, 3)} GHz: locked."
             data = {'text': message1}
 
-            requests.post(url, json=data, verify=False)
+            requests.post(slack_url, json=data, verify=False)
         else:
             self.isLocked = False
 
@@ -500,6 +671,9 @@ class MainWindow(QMainWindow):
             self.chLayout.addWidget(self.thresholdWidgets[i], 5 * i + 3, 0, 1, 1)
             # self.chLayout.addWidget(self.channels[i])
             self.channels[i].data = [self.targets[i], 0, 0, 1]
+        with data_lock:
+            global data_per_channel
+            data_per_channel = [[None, None, None, None] for _ in range(len(self.targets))]
         self.horLayout.addLayout(self.chLayout)
         self.mainLayout.addLayout(self.horLayout)
         self.mainLayout.addLayout(self.endLayout)
@@ -553,7 +727,7 @@ class MainWindow(QMainWindow):
 
     def createData(self):
         self.wavelength, self.saturation, self.status, self.wmTime = device.get_measurement()
-
+        print(self.wmTime)
         global timeStep
         timeStep = time() - self.timeStart
 
@@ -586,6 +760,13 @@ class MainWindow(QMainWindow):
                     pass
             else:
                 self.storedData[i][1] = 0
+            with data_lock:
+                global data_per_channel
+                data_per_channel[i][0] = self.frequency
+                data_per_channel[i][1] = self.saturation
+                data_per_channel[i][2] = self.status
+                data_per_channel[i][3] = self.wmTime
+
 
     def changeCalibration(self, calib):
         if calib == 0:
@@ -704,12 +885,17 @@ class MainWindow(QMainWindow):
 
 
 def closing():
+    global server
+    print("Closing the server...")
     device.serial_port.close()
+    server.stop_worker()
+    del server
 
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
 
+server = Server('tcp://*:8850')
 app.aboutToQuit.connect(closing)
 w = MainWindow()
 # monitor = QDesktopWidget().screenGeometry(2)
@@ -717,3 +903,5 @@ w = MainWindow()
 w.show()
 
 app.exec()
+
+# del server
