@@ -38,7 +38,7 @@ class Client(object):
         return deco
     
     def send_get_frequencies(self):
-        @Client.poll_recv([0, 0])
+        @Client.poll_recv([0, 0, 0])
         def _send_get_frequencies(self):
             self.__sock.send_string('get_frequencies')
         rep = _send_get_frequencies(self)
@@ -46,7 +46,45 @@ class Client(object):
         # print(rep[0])
         # print(rep[1])
         if nfreqs == 0:
-            return np.array([])
+            return np.array([]), []
         else:
             freqs = np.frombuffer(rep[1], dtype=np.float64, count=nfreqs)
-            return freqs
+            time_data = rep[2]
+            times = time_data.split(b'\x00')[:-1]
+            times = [t.decode('utf-8') for t in times]
+            return freqs, times
+    
+    def send_get_saturations(self):
+        @Client.poll_recv([0, 0, 0])
+        def _send_get_saturations(self):
+            self.__sock.send_string('get_saturations')
+        rep = _send_get_saturations(self)
+        nfreqs = int.from_bytes(rep[0], 'little')
+        # print(rep[0])
+        # print(rep[1])
+        if nfreqs == 0:
+            return np.array([]), []
+        else:
+            freqs = np.frombuffer(rep[1], dtype=np.float64, count=nfreqs)
+            time_data = rep[2]
+            times = time_data.split(b'\x00')[:-1]
+            times = [t.decode('utf-8') for t in times]
+            return freqs, times
+        
+    def send_get_data(self):
+        @Client.poll_recv([0, 0, 0, 0])
+        def _send_get_data(self):
+            self.__sock.send_string('get_data')
+        rep = _send_get_data(self)
+        nfreqs = int.from_bytes(rep[0], 'little')
+        # print(rep[0])
+        # print(rep[1])
+        if nfreqs == 0:
+            return np.array([]), np.array([]), []
+        else:
+            freqs = np.frombuffer(rep[1], dtype=np.float64, count=nfreqs)
+            saturations = np.frombuffer(rep[2], dtype=np.float64, count=nfreqs)
+            time_data = rep[3]
+            times = time_data.split(b'\x00')[:-1]
+            times = [t.decode('utf-8') for t in times]
+            return freqs, saturations, times

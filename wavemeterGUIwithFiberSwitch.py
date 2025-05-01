@@ -100,6 +100,8 @@ class Server(object):
             msg_type, rep = self.get_frequencies()
         elif msg_str == "get_saturations":
             msg_type, rep = self.get_saturations()
+        elif msg_str == "get_data":
+            msg_type, rep = self.get_data()
         else:
             self.safe_send(addr, [1], [f''])
             print("Unknown request " + msg_str)
@@ -186,30 +188,53 @@ class Server(object):
         with data_lock:
             data = copy.deepcopy(data_per_channel)
         if len(data) == 0:
-            return [0, 0], [int(0).to_bytes(4,'little'), np.array([], dtype=np.float64).tobytes()]
+            return [0, 0, 0], [int(0).to_bytes(4,'little'), np.array([], dtype=np.float64).tobytes(), b'']
         freqs = []
+        times = b''
         for point in data:
             if point[0] is not None:
                 freqs.append(point[0])
+                times = times + point[3].encode('utf-8') + b'\x00'  # encode time as utf-8 and add null terminator
         if len(freqs) == 0:
-            return [0, 0], [int(0).to_bytes(4,'little'), np.array([], dtype=np.float64).tobytes()]
+            return [0, 0, 0], [int(0).to_bytes(4,'little'), np.array([], dtype=np.float64).tobytes(), times]
         else:
-            return [0, 0], [int(len(freqs)).to_bytes(4, 'little'), np.array(freqs, dtype=np.float64).tobytes()]
+            return [0, 0, 0], [int(len(freqs)).to_bytes(4, 'little'), np.array(freqs, dtype=np.float64).tobytes(), times]
         
     @safe_process
     def get_saturations(self):
         with data_lock:
             data = copy.deepcopy(data_per_channel)
         if len(data) == 0:
-            return [0, 0], [int(0).to_bytes(4,'little'), np.array([], dtype=np.float64).tobytes()]
+            return [0, 0, 0], [int(0).to_bytes(4,'little'), np.array([], dtype=np.float64).tobytes(), b'']
         freqs = []
+        times = b''
         for point in data:
             if point[1] is not None:
                 freqs.append(point[1])
+                times = times + point[3].encode('utf-8') + b'\x00'  # encode time as utf-8 and add null terminator
         if len(freqs) == 0:
-            return [0, 0], [int(0).to_bytes(4,'little'), np.array([], dtype=np.float64).tobytes()]
+            return [0, 0, 0], [int(0).to_bytes(4,'little'), np.array([], dtype=np.float64).tobytes(), times]
         else:
-            return [0, 0], [int(len(freqs)).to_bytes(4, 'little'), np.array(freqs, dtype=np.float64).tobytes()]
+            return [0, 0, 0], [int(len(freqs)).to_bytes(4, 'little'), np.array(freqs, dtype=np.float64).tobytes(), times]
+        
+    @safe_process
+    def get_data(self):
+        with data_lock:
+            data = copy.deepcopy(data_per_channel)
+        if len(data) == 0:
+            return [0, 0, 0, 0], [int(0).to_bytes(4,'little'), np.array([], dtype=np.float64).tobytes(), np.array([], dtype=np.float64).tobytes(), b'']
+        freqs = []
+        saturations = []
+        times = b''
+        for point in data:
+            if point[1] is not None:
+                freqs.append(point[0])
+                saturations.append(point[1])
+                times = times + point[3].encode('utf-8') + b'\x00'  # encode time as utf-8 and add null terminator
+        if len(freqs) == 0:
+            return [0, 0, 0, 0], [int(0).to_bytes(4,'little'), np.array([], dtype=np.float64).tobytes(), np.array([], dtype=np.float64).tobytes(), times]
+        else:
+            return [0, 0, 0, 0], [int(len(freqs)).to_bytes(4, 'little'), np.array(freqs, dtype=np.float64).tobytes(), np.array(saturations, dtype=np.float64).tobytes(), times]
 
 
 class Channel(QWidget):  # a class for the widgets belonging to a particular channel
@@ -728,6 +753,8 @@ class MainWindow(QMainWindow):
     def createData(self):
         self.wavelength, self.saturation, self.status, self.wmTime = device.get_measurement()
         #print(self.wmTime)
+        now = datetime.now()
+        dateTimeString = now.strftime("%Y-%m-%d" + "T" + "%H:%M:%S.%f")[:-3]
         global timeStep
         timeStep = time() - self.timeStart
 
@@ -765,7 +792,7 @@ class MainWindow(QMainWindow):
                 data_per_channel[i][0] = self.frequency
                 data_per_channel[i][1] = self.saturation
                 data_per_channel[i][2] = self.status
-                data_per_channel[i][3] = self.wmTime
+                data_per_channel[i][3] = dateTimeString
 
 
     def changeCalibration(self, calib):
