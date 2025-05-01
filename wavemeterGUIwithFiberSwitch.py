@@ -33,10 +33,13 @@ pg.setConfigOptions(antialias=True)  # antialiasing makes the graphs easier to v
 global writeFile
 global saveData
 global dir
+global dir2
 #dir="C:\Bristol"
-dir = "N:\\wavemeterEightChannelLogs"
-
+dir = "C:\\Users\\Krb-Logging\\wavemeter"
+#dir = "N:\\wavemeterEightChannelLogsYXLiu"
+dir2 = "W:\\FastWavemeterLogs"
 saveData = True
+
 
 
 class Channel(QWidget):  # a class for the widgets belonging to a particular channel
@@ -368,6 +371,8 @@ class MainWindow(QMainWindow):
         self.f = []  # list of the plot datapoint's y-coordinates
         self.Rb5s6p = 713281.7400
         self.NaD2 = 508848.9217
+        self.NaD1 = 508332.500
+        self.KRbSTIRAP970 = 309602.628
         self.KRbSTIRAP690 = 434922.3375  # empirically determined by using the Na D2for callibration
         self.calibF = self.NaD2
         self.red = 472158.8
@@ -388,8 +393,8 @@ class MainWindow(QMainWindow):
         #                            symbolPen='w')  # graph denotes the axes, and line denotes the datapoints. When we update the plot, we only need to redraw the line.
         # 472158.192->STIRAP NaCs Red
 
-        self.targets = [750000,713282.995,700000,650000,600000,550000,508848.922,508332.499,500000,467046.884,434912.747,328966.487,320010.619,293834.532,290000,285000,281901.730]
-        self.thresholds = [10.0] * len(self.targets)
+        self.targets = [750000, 713289.100, 650000, 508848.922, 508848.402, 508332.499, 467044.500, 462900, 445000, 434912.747, 391016, 365753, 328966, 320008.235, 309602.628, 296387, 282288.730]
+        self.thresholds = [100.0, 100.0, 100.0, 0.1, 10.3, 100, 100, 100, 100, 100, 1000, 100, 100, 100, 100, 100, 100]
         self.targets.sort(reverse=True)
         self.wmErrorAvgNo = 5
         self.storedData = [[0, 0]] * len(self.targets)
@@ -457,7 +462,9 @@ class MainWindow(QMainWindow):
 
         self.calCombo = QComboBox()
         self.calCombo.addItem("Na D2")
-        self.calCombo.addItem("KRb STIRAP")
+        self.calCombo.addItem("KRb STIRAP 690")
+        self.calCombo.addItem("KRb STIRAP 970")
+        self.calCombo.addItem("Na D1")
         self.calCombo.addItem("No calibration")
         self.calCombo.currentIndexChanged.connect(self.changeCalibration)
 
@@ -588,6 +595,12 @@ class MainWindow(QMainWindow):
             self.calibF = float(self.KRbSTIRAP690)
             self.calibrateQ = True
         elif calib == 2:
+            self.calibF=float(self.KRbSTIRAP970)
+            self.calibrateQ = True
+        elif calib == 3:
+            self.calibF = float(self.NaD1)
+            self.calibrateQ = True
+        elif calib == 4:
             self.calibrateQ = False
 
     def updateCalibrator(self):
@@ -667,7 +680,19 @@ class MainWindow(QMainWindow):
         outputBody.append(1000 * np.mean(self.wmError))
         outputHeader.append("wmError")
         if saveData:
+
             path = dir + "\\" + now.strftime("%Y%m%d") + "_fast_wm.csv"
+            if os.path.isfile(path) == False:
+                with open(path, 'a', newline='') as f:
+                    write = csv.writer(f)
+                    write.writerow(outputHeader)
+            else:
+                with open(path, 'a', newline='') as f:
+                    write = csv.writer(f)
+                    write.writerow(outputBody)
+
+
+            path = dir2 + "\\" + now.strftime("%Y%m%d") + "_fast_wm.csv"
             if os.path.isfile(path) == False:
                 with open(path, 'a', newline='') as f:
                     write = csv.writer(f)
