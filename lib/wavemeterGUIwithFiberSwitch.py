@@ -589,7 +589,7 @@ class MainWindow(QMainWindow):
         #                            symbolPen='w')  # graph denotes the axes, and line denotes the datapoints. When we update the plot, we only need to redraw the line.
         # 472158.192->STIRAP NaCs Red
 
-        self.targets = [750000, 713289.100, 650000, 508848.922, 508848.402, 508332.499, 467044.500, 462900, 445000, 434912.747, 391016, 365753, 328966, 320008.235, 309602.628, 296387, 282288.730]
+        self.targets = [750000, 713289.100, 650000, 508848.922, 508848.402, 508332.499, 467044.500, 462900, 445000, 434912.747, 391016, 366219, 328966, 320008.235, 309602.628, 296387, 282288.730]
         self.thresholds = [100.0, 100.0, 100.0, 0.1, 10.3, 100, 100, 100, 100, 100, 1000, 100, 100, 100, 100, 100, 100]
         self.targets.sort(reverse=True)
         self.wmErrorAvgNo = 5
@@ -794,10 +794,10 @@ class MainWindow(QMainWindow):
             else:
                 self.storedData[i][1] = 0
                 with data_lock:
-                    data_per_channel[i][0] = self.frequency
-                    data_per_channel[i][1] = self.saturation
-                    data_per_channel[i][2] = self.status
-                    data_per_channel[i][3] = dateTimeString
+                    data_per_channel[i + 1][0] = self.frequency
+                    data_per_channel[i + 1][1] = self.saturation
+                    data_per_channel[i + 1][2] = self.status
+                    data_per_channel[i + 1][3] = dateTimeString
 
 
     def changeCalibration(self, calib):
