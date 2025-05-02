@@ -756,6 +756,7 @@ class MainWindow(QMainWindow):
         now = datetime.now()
         dateTimeString = now.strftime("%Y-%m-%d" + "T" + "%H:%M:%S.%f")[:-3]
         global timeStep
+        global data_per_channel
         timeStep = time() - self.timeStart
 
         if self.wavelength >= 300 and self.wavelength <= 2000 and self.saturation >= 0.05 and self.saturation <= 1:
@@ -783,7 +784,6 @@ class MainWindow(QMainWindow):
                         self.channels[i].data = self.data
                     self.validFreqNeedsAttention = False
                     with data_lock:
-                        global data_per_channel
                         data_per_channel[i][0] = self.frequency
                         data_per_channel[i][1] = self.saturation
                         data_per_channel[i][2] = self.status
@@ -794,7 +794,6 @@ class MainWindow(QMainWindow):
             else:
                 self.storedData[i][1] = 0
                 with data_lock:
-                    global data_per_channel
                     data_per_channel[i][0] = self.frequency
                     data_per_channel[i][1] = self.saturation
                     data_per_channel[i][2] = self.status
