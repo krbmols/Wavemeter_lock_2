@@ -25,66 +25,77 @@ class Client(object):
                     print('Error in client function: ' + str(e))
                     return None
                 rep = []
+                bTimeout = False
                 for i in recv_type:
                     if self.__sock.poll(timeout) == 0:
                         rep.append(None)
+                        bTimeout = True
                     else:
                         if i == 0:
                             rep.append(self.__sock.recv(flag))
                         else:
                             rep.append(self.__sock.recv_string(flag))
-                return rep
+                return rep, bTimeout
             return f
         return deco
     
     def send_get_frequencies(self):
-        @Client.poll_recv([0, 0, 0])
+        @Client.poll_recv([0, 0, 0], timeout=10000)
         def _send_get_frequencies(self):
             self.__sock.send_string('get_frequencies')
-        rep = _send_get_frequencies(self)
-        nfreqs = int.from_bytes(rep[0], 'little')
-        # print(rep[0])
-        # print(rep[1])
-        if nfreqs == 0:
-            return np.array([]), []
+        rep, bTimeout = _send_get_frequencies(self)
+        if not bTimeout:
+            nfreqs = int.from_bytes(rep[0], 'little')
+            # print(rep[0])
+            # print(rep[1])
+            if nfreqs == 0:
+                return np.array([]), []
+            else:
+                freqs = np.frombuffer(rep[1], dtype=np.float64, count=nfreqs)
+                time_data = rep[2]
+                times = time_data.split(b'\x00')[:-1]
+                times = [t.decode('utf-8') for t in times]
+                return freqs, times
         else:
-            freqs = np.frombuffer(rep[1], dtype=np.float64, count=nfreqs)
-            time_data = rep[2]
-            times = time_data.split(b'\x00')[:-1]
-            times = [t.decode('utf-8') for t in times]
-            return freqs, times
+            return np.array([]), []
     
     def send_get_saturations(self):
-        @Client.poll_recv([0, 0, 0])
+        @Client.poll_recv([0, 0, 0], timeout=10000)
         def _send_get_saturations(self):
             self.__sock.send_string('get_saturations')
-        rep = _send_get_saturations(self)
-        nfreqs = int.from_bytes(rep[0], 'little')
-        # print(rep[0])
-        # print(rep[1])
-        if nfreqs == 0:
-            return np.array([]), []
+        rep, bTimeout = _send_get_saturations(self)
+        if not bTimeout:
+            nfreqs = int.from_bytes(rep[0], 'little')
+            # print(rep[0])
+            # print(rep[1])
+            if nfreqs == 0:
+                return np.array([]), []
+            else:
+                freqs = np.frombuffer(rep[1], dtype=np.float64, count=nfreqs)
+                time_data = rep[2]
+                times = time_data.split(b'\x00')[:-1]
+                times = [t.decode('utf-8') for t in times]
+                return freqs, times
         else:
-            freqs = np.frombuffer(rep[1], dtype=np.float64, count=nfreqs)
-            time_data = rep[2]
-            times = time_data.split(b'\x00')[:-1]
-            times = [t.decode('utf-8') for t in times]
-            return freqs, times
+            return np.array([]), []
         
     def send_get_data(self):
-        @Client.poll_recv([0, 0, 0, 0])
+        @Client.poll_recv([0, 0, 0, 0], timeout=10000)
         def _send_get_data(self):
             self.__sock.send_string('get_data')
-        rep = _send_get_data(self)
-        nfreqs = int.from_bytes(rep[0], 'little')
-        # print(rep[0])
-        # print(rep[1])
-        if nfreqs == 0:
-            return np.array([]), np.array([]), []
+        rep, bTimeout = _send_get_data(self)
+        if not bTimeout:
+            nfreqs = int.from_bytes(rep[0], 'little')
+            # print(rep[0])
+            # print(rep[1])
+            if nfreqs == 0:
+                return np.array([]), np.array([]), []
+            else:
+                freqs = np.frombuffer(rep[1], dtype=np.float64, count=nfreqs)
+                saturations = np.frombuffer(rep[2], dtype=np.float64, count=nfreqs)
+                time_data = rep[3]
+                times = time_data.split(b'\x00')[:-1]
+                times = [t.decode('utf-8') for t in times]
+                return freqs, saturations, times
         else:
-            freqs = np.frombuffer(rep[1], dtype=np.float64, count=nfreqs)
-            saturations = np.frombuffer(rep[2], dtype=np.float64, count=nfreqs)
-            time_data = rep[3]
-            times = time_data.split(b'\x00')[:-1]
-            times = [t.decode('utf-8') for t in times]
-            return freqs, saturations, times
+            return np.array([]), np.array([]), []

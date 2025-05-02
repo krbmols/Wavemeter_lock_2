@@ -21,7 +21,7 @@ from bristol_RS422 import BristolRS422
 from PyQt5.QtGui import QFont
 from datetime import datetime
 from time import time
-import DummyDevice
+# import DummyDevice as DummyDevice
 import zmq
 import copy
 from enum import Enum
@@ -32,7 +32,7 @@ global portnumber
 portnumber = "COM10"  # the usb port to which the wavemeter is connected
 global device
 device = BristolRS422(portnumber)  # the BristolRS422 python file collects measurements from the Bristol 871a wavemeter
-# device = DummyDevice.DummyDevice(np.array([750000, 713289.100, 650000, 508848.922, 508848.402, 508332.499, 467044.500, 462900, 445000, 434912.747, 391016, 365753, 328966, 320008.235, 309602.628, 296387, 282288.730]))
+#device = DummyDevice.DummyDevice(np.array([750000, 713289.100, 650000, 508848.922, 508848.402, 508332.499, 467044.500, 462900, 445000, 434912.747, 391016, 365753, 328966, 320008.235, 309602.628, 296387, 282288.730]))
 pg.setConfigOptions(antialias=True)  # antialiasing makes the graphs easier to view
 
 global writeFile
@@ -698,7 +698,7 @@ class MainWindow(QMainWindow):
             self.channels[i].data = [self.targets[i], 0, 0, 1]
         with data_lock:
             global data_per_channel
-            data_per_channel = [[None, None, None, None] for _ in range(len(self.targets))]
+            data_per_channel = [[None, None, None, None] for _ in range(len(self.targets) + 1)]
         self.horLayout.addLayout(self.chLayout)
         self.mainLayout.addLayout(self.horLayout)
         self.mainLayout.addLayout(self.endLayout)
@@ -782,17 +782,23 @@ class MainWindow(QMainWindow):
                         self.storedData[i] = self.data[:2]
                         self.channels[i].data = self.data
                     self.validFreqNeedsAttention = False
+                    with data_lock:
+                        global data_per_channel
+                        data_per_channel[i][0] = self.frequency
+                        data_per_channel[i][1] = self.saturation
+                        data_per_channel[i][2] = self.status
+                        data_per_channel[i][3] = dateTimeString
                     break
                 else:
                     pass
             else:
                 self.storedData[i][1] = 0
-            with data_lock:
-                global data_per_channel
-                data_per_channel[i][0] = self.frequency
-                data_per_channel[i][1] = self.saturation
-                data_per_channel[i][2] = self.status
-                data_per_channel[i][3] = dateTimeString
+                with data_lock:
+                    global data_per_channel
+                    data_per_channel[i][0] = self.frequency
+                    data_per_channel[i][1] = self.saturation
+                    data_per_channel[i][2] = self.status
+                    data_per_channel[i][3] = dateTimeString
 
 
     def changeCalibration(self, calib):
