@@ -570,6 +570,7 @@ class MainWindow(QMainWindow):
         self.NaD1 = 508332.500
         self.KRbSTIRAP970 = 309602.628
         self.KRbSTIRAP690 = 434922.3375  # empirically determined by using the Na D2for callibration
+        self.CsRyd911 = 328966.616 # pre doubled Cs rydberg, blue detuned from 6S to 7P3/2
         self.calibF = self.NaD2
         self.red = 472158.8
         self.iCalibration = 1
@@ -661,6 +662,7 @@ class MainWindow(QMainWindow):
         self.calCombo.addItem("KRb STIRAP 690")
         self.calCombo.addItem("KRb STIRAP 970")
         self.calCombo.addItem("Na D1")
+        self.calCombo.addItem("Cs Ryd 911")
         self.calCombo.addItem("No calibration")
         self.calCombo.currentIndexChanged.connect(self.changeCalibration)
 
@@ -814,6 +816,9 @@ class MainWindow(QMainWindow):
             self.calibF = float(self.NaD1)
             self.calibrateQ = True
         elif calib == 4:
+            self.calibF = float(self.CsRyd911)
+            self.calibrateQ = True
+        elif calib == 5:
             self.calibrateQ = False
 
     def updateCalibrator(self):
