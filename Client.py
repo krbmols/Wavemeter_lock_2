@@ -23,6 +23,7 @@ class Client(object):
                     func(self, *args)
                 except Exception as e:
                     print('Error in client function: ' + str(e))
+                    bTimeout = True
                     return None
                 rep = []
                 bTimeout = False
