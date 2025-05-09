@@ -1,0 +1,9 @@
+Na D1:
+  freq_GHz: 508332.5
+  tol_GHz: 0.5
+NaMOT:
+  freq_GHz: 508848.92
+  tol_GHz: 0.5
+STIRAP:
+  freq_GHz: 309602.6
+  tol_GHz: 0.5

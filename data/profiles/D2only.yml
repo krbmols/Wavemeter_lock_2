@@ -1,0 +1,11 @@
+freqs:
+- 508848.92
+lock_tols:
+- 5
+n_figs: 1
+names:
+- Na D2
+nptss:
+- 100
+tols:
+- 1

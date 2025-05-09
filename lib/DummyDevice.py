@@ -14,8 +14,8 @@ class DummyDevice:
     
     def get_measurement(self):
         # Simulate a measurement. Don't read from the last two targets
-        time.sleep(0.1)
+        time.sleep(0.01)
         these_targets = self.targets[:-2]
         these_targets = self.c / these_targets
         this_target = random.choice(these_targets) + random.uniform(-0.00001, 0.00001)
-        return this_target, random.uniform(0.1, 0.5), 4, 0
+        return this_target, random.uniform(0.05, 0.2), 4, 0

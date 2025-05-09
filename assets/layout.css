@@ -1,0 +1,100 @@
+.plot-block {
+    height: 8rem;
+}
+
+.plot-fig {
+    height: 6rem;
+}
+
+.laser-title-text {
+    font-size: 20px;
+    font-weight: 3px;
+    text-decoration: underline;
+}
+
+.freq-info-text-1 {
+    font-size: 20px;
+}
+
+.freq-info-text-2 {
+    font-size: 20px;
+}
+
+.freq-text-1 {
+    font-size: 40px;
+}
+
+.freq-text-2 {
+    font-size: 60px;
+}
+
+.freq-text-3 {
+    font-size: 15px;
+}
+
+.suggestion-text {
+    font-size: 20px;
+}
+
+.lock-tol-text {
+    font-size: 16px;
+}
+
+@media(max-width: 992px) {
+    .freq-info-text-1 {
+        font-size: 17px;
+    }
+    .freq-info-text-2 {
+        font-size: 17px;
+    }
+}
+
+@media(max-width: 768px) {
+    .laser-title-text {
+        font-size: 14px;
+        font-weight: 2px;
+        text-decoration: underline;
+    }
+    .freq-info-text-1 {
+        font-size: 12px;
+    }
+    .freq-info-text-2 {
+        font-size: 12px;
+    }
+    .freq-text-1 {
+        font-size: 30px;
+    }
+    .lock-tol-text {
+        font-size: 12px;
+    }
+}
+
+/* for bootstrap < sm */
+@media(max-width: 576px) {
+    .laser-title-text {
+        font-size: 20px;
+        font-weight: 3px;
+        text-decoration: underline;
+    }
+    .freq-info-text-1 {
+        font-size: 20px;
+    }
+    .freq-info-text-2 {
+        font-size: 20px;
+    }
+    .plot-block{
+        height: 8rem;
+    }
+    .plot-fig {
+        height: 6rem;
+    }
+    .freq-text-1 {
+        font-size: 40px;
+    }
+    .lock-tol-text {
+        font-size: 16px;
+    }
+}
+
+
+
