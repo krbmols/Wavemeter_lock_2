@@ -20,23 +20,54 @@ function calcFreqOptions(freq_vals, curr_freq_vals, tolerance) {
     return options;
 }
 
+function getHistogramBins(data, binCount = 10) {
+    const min = Math.min(...data);
+    const max = Math.max(...data);
+    const binWidth = (max - min) / binCount;
+
+    const bins = new Array(binCount).fill(0);
+    const bin_centers = Array.from({length: binCount}, (val,idx)=> min + (idx + 0.5) * binWidth);
+    for (const value of data) {
+        let binIndex = Math.floor((value - min) / binWidth);
+        if (binIndex === binCount) binIndex -= 1;  // Include max in last bin
+        bins[binIndex]++;
+    }
+
+    return {
+        counts: bins,
+        binCenters: bin_centers
+    };
+}
+
+function generateUUID() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        var r = crypto.getRandomValues(new Uint8Array(1))[0] % 16, v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
+}
+
 window.dash_clientside = Object.assign({}, window.dash_clientside, {
     clientside: {
         /*
         Output({'type': 'data_plot', 'index': MATCH}, 'figure'),
+        Output({'type': 'bar_plot', 'index': MATCH}, 'figure'),
         Output({'type': 'freq_info', 'index': MATCH}, 'children'),
         Output({'type': 'freq_digits', 'index': MATCH}, 'children'),
         Output({'type': 'laser-metadata', 'index': MATCH}, 'data'),
         Output({'type': 'freq_digits', 'index': MATCH}, 'style'),
+        Output({'type': 'log-msg', 'index': MATCH}, 'data'),
         Input('wm_data', 'data'),
-        Input({'type': 'data_plot', 'index': MATCH}, 'figure'),
+        State({'type': 'data_plot', 'index': MATCH}, 'figure'),
+        State({'type': 'bar_plot', 'index': MATCH}, 'figure'),
         State({'type': 'laser-metadata', 'index': MATCH}, 'data'),
         State({'type': 'freq_digits', 'index': MATCH}, 'style')
         */
-        update_plot: function(newData, currentFig, info, prev_style) {
-            if (!currentFig || !newData || !info) {
-                return [window.dash_clientside.no_update, window.dash_clientside.no_update,  window.dash_clientside.no_update];
+        update_plot: function(newData, currentFig, currentBarFig, info, prev_style) {
+            if (!currentFig || !currentBarFig || !newData || !info) {
+                return [window.dash_clientside.no_update, window.dash_clientside.no_update,  window.dash_clientside.no_update, window.dash_clientside.no_update, window.dash_clientside.no_update, window.dash_clientside.no_update, window.dash_clientside.no_update];
             }
+            ctx = dash_clientside.callback_context;
+            // console.log(ctx)
             // Values we need
             const center_freq = info['f'];
             const freq_tol = info['df'];
@@ -45,8 +76,15 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
             let updatedFig = {...currentFig};
             updatedFig.data = [...updatedFig.data];
 
+            let updatedBarFig = {...currentBarFig};
+            updatedBarFig.data = [...updatedBarFig.data];
+
             if (!updatedFig.data[0]) {
                 updatedFig.data[0] = {x: [], y: [], type: 'scatter', mode: 'lines'};
+            }
+
+            if (!updatedBarFig.data[0]) {
+                updatedBarFig.data[0] = {x: [], y: [], orientation: 'h'};
             }
             // Data to use
             const new_freqs = [];
@@ -57,7 +95,7 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
                 let this_freq = newData[0][i];
                 let this_time = newData[3][i];
                 if (Math.abs(this_freq - center_freq) < freq_tol && !(cur_times.includes(this_time))) {
-                    new_freqs.push(this_freq - center_freq);
+                    new_freqs.push((this_freq - center_freq) * 1e3);
                     new_times.push(this_time);
                     amp = newData[1][i];
                 }
@@ -70,12 +108,20 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
             }
 
             updatedFig.data[0].x = tot_times;
-            updatedFig.data[0].y = tot_freqs;
+            updatedFig.data[0].y = tot_freqs; // In MHz
 
+            const hist_results = getHistogramBins(tot_freqs);
+            updatedBarFig.data[0].x = hist_results['counts'];
+            updatedBarFig.data[0].y = hist_results['binCenters'];
+
+            /*
+            info['cur_lock_condition'] = False
+    info['lock_pt_counter'] = 5
+    */
             // Split text output
-            const split_num = (tot_freqs[tot_freqs.length - 1] + center_freq).toFixed(3).split(".");
-            const std_freq = (getStandardDeviation(tot_freqs) * 1e3).toFixed(1); // MHz
-            const wavelength = (299792458 / (tot_freqs[tot_freqs.length - 1] + center_freq)).toFixed(1);
+            const split_num = (tot_freqs[tot_freqs.length - 1]/1e3 + center_freq).toFixed(3).split(".");
+            const std_freq = (getStandardDeviation(tot_freqs)).toFixed(1); // MHz
+            const wavelength = (299792458 / (tot_freqs[tot_freqs.length - 1]/1e3 + center_freq)).toFixed(1);
             const amp_print = (amp * 100).toFixed(1)
             let this_color = 'white';
             if (amp < 0.1) {
@@ -85,13 +131,26 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
             const lock_status = info['lock_status'];
             const lock_tol_MHz = info['lock_tol_MHz'];
             let output_style;
-            if (lock_status && (Math.abs(tot_freqs[tot_freqs.length - 1]) > lock_tol_MHz/1e3)) {
+            let output_log =  window.dash_clientside.no_update;
+            if (lock_status && (Math.abs(tot_freqs[tot_freqs.length - 1]) > lock_tol_MHz)) {
                 output_style = Object.assign({}, prev_style);
                 output_style.backgroundColor = '#f8d7da';
+                if (info['cur_lock_condition']) {
+                    info['cur_lock_condition'] = false;
+                    info['lock_pt_counter'] = 0;
+                    output_log = 'Laser ' + info['name'] + '(' + center_freq + 'GHz)' + ' unlocked!';
+                }
             }
             else {
                 output_style = Object.assign({}, prev_style);
                 delete output_style.backgroundColor;
+                info['lock_pt_counter'] = info['lock_pt_counter'] + 1;
+                if (!info['cur_lock_condition'] && info['lock_pt_counter'] >= 5) {
+                    info['cur_lock_condition'] = true;
+                    if (lock_status) {
+                        output_log = 'Laser ' + info['name'] + '(' + center_freq + 'GHz)' + ' locked!';
+                    }
+                }
             }
             // const span1 = document.createElement('span');
             // span1.textContent = 'hi';
@@ -107,12 +166,10 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
             const span1 = { 'props': {'children': split_num[0] + '.', 'className' : 'freq-text-1'},'type': 'Span', 'namespace': 'dash_html_components'};
             const span2 = { 'props': {'children': split_num[1], 'className': 'freq-text-2'},'type': 'Span', 'namespace': 'dash_html_components'};
             const span3 = { 'props': {'children': ' GHz', 'className': 'freq-text-3'},'type': 'Span', 'namespace': 'dash_html_components'};
-            let return_info = window.dash_clientside.no_update;
             if (amp != info['cur_amp']) {
                 info['cur_amp'] = amp;
-                return_info = info;
             }
-            return [updatedFig, [info_span1, info_span2, info_span3], [span1, span2, span3], return_info, output_style];
+            return [updatedFig, updatedBarFig, [info_span1, info_span2, info_span3], [span1, span2, span3], info, output_style, output_log];
         },
         /*
         Output("add-laser-dialog", "is_open", allow_duplicate=True),
@@ -252,7 +309,35 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
         Input('close-msg', 'n_clicks')
         */
         close_msg: function(btn) {
-            return 0
+            return 0;
+        },
+        /*
+        Output('uuid', 'data'),
+        Input('get-uuid', 'n_intervals'),
+        State('uuid', 'data')
+        */
+        get_uuid: function(n_intervals, uuid) {
+            if (!uuid) {
+                return generateUUID();
+            }
+            return window.dash_clientside.no_update;
+        },
+        /*
+        Output('uuid-display', 'children'),
+        Input('log-page-load', 'n_intervals'),
+        State('uuid', 'data')
+        */
+        display_uuid: function(n_intervals, uuid) {
+            if (uuid) {
+                return 'My UUID: ' + uuid;
+            }
+            return 'No UUID';
+        },
+        // Output('log_msg', 'data'),
+        // Input('server-page-load', 'n_intervals')
+        browser_open_msg: function(n_intervals) {
+            console.log("Here");
+            return 'Browser tab opened.';
         }
     }
 });

@@ -13,11 +13,12 @@ import yaml
 from pathlib import Path
 
 profile_dir = './data/profiles/'
+users_file = './data/users.yml'
 
 dash.register_page(__name__, path='/')
 
 def create_default_figure(title = ''):
-    default_figure = make_subplots(specs=[[{"secondary_y": True}]])
+    default_figure = make_subplots()
     default_figure.update_layout(
         title=title,
         xaxis=dict(
@@ -25,7 +26,7 @@ def create_default_figure(title = ''):
             showticklabels=False
         ),
         yaxis=dict(
-            title="Value",
+            title="\u0394f MHz",
             fixedrange=False
         ),
         legend_title="Legend",
@@ -34,6 +35,38 @@ def create_default_figure(title = ''):
     default_figure.add_trace(go.Scatter(x=[], y=[], mode='markers', name='Channel 1', type='scatter',
                         showlegend=False))
     return default_figure
+
+def create_bar_figure(title = ''):
+    figure = make_subplots()
+    # default_figure.update_layout(
+    #     title=title,
+    #     xaxis=dict(
+    #         title="Time",
+    #         showticklabels=False
+    #     ),
+    #     yaxis=dict(
+    #         title="Value",
+    #         fixedrange=False
+    #     ),
+    #     legend_title="Legend",
+    #     margin=dict(l=20, r=0, t=20, b=20)
+    # )
+    # default_figure.add_trace(go.Scatter(x=[], y=[], mode='markers', name='Channel 1', type='scatter',
+    #                     showlegend=False))
+    figure.add_trace(
+        go.Bar(
+            x=[],                  # No data
+            y=[],                  # No categories
+            orientation='h',       # Horizontal bars
+            showlegend=False
+        )
+    )
+
+    figure.update_layout(
+        margin=dict(l=0, r=0, t=20, b=20)
+    )
+
+    return figure
 
 def create_edit_modal(plot_id):
     return dbc.Modal(
@@ -101,6 +134,9 @@ def create_new_block(plot_id, title='', name='', center_freq=508848.920, freq_to
     info['cur_amp'] = 0
     info['lock_status'] = False
     info['lock_tol_MHz'] = lock_tol_MHz
+    # At the moment, cur_lock_condition and lock_pt_counter is purely used for the log. 
+    info['cur_lock_condition'] = False
+    info['lock_pt_counter'] = 5 # 5 consecutive points in the lock region is required, so upon creation, the lock condition is ready to be locked
     child = dbc.Row([
         dbc.Col([
             dbc.Row([
@@ -138,11 +174,25 @@ def create_new_block(plot_id, title='', name='', center_freq=508848.920, freq_to
                         'showAxisDragHandles': False, # Disable dragging of axes
                         'showAxisRangeEntry': False,   # Disable axis range entry boxes
                         'responsive': False
-                    }, className = 'h-100'))
+                    }, className = 'h-100'), width=8),
+                    dbc.Col(
+                        dcc.Graph(id={'type': 'bar_plot', 'index': plot_id}, figure=create_bar_figure(), mathjax=True,
+                      config={
+                        'scrollZoom': False,          # Disable zooming with mouse wheel
+                        'displayModeBar': False,      # Disable the mode bar (toolbar)
+                        'staticPlot': True,           # Disable panning, zooming, etc.
+                        'displaylogo': False,         # Hide the Plotly logo
+                        'showTips': False,            # Disable hover information
+                        'editable': False,            # Disable editing of plot elements
+                        'showAxisDragHandles': False, # Disable dragging of axes
+                        'showAxisRangeEntry': False,   # Disable axis range entry boxes
+                        'responsive': False
+                    }, className = 'h-100'), width=4)
             ], className="plot-fig")
         ], className='d-flex flex-column justify-content-end g-0',width=12, sm=6),
         create_edit_modal(plot_id),
-        dcc.Store(id={'type': 'laser-metadata', 'index': plot_id}, data=info, storage_type='memory')
+        dcc.Store(id={'type': 'laser-metadata', 'index': plot_id}, data=info, storage_type='memory'),
+        dcc.Store(id={'type': 'log-msg', 'index': plot_id}, storage_type='memory')
     ], className='d-flex g-0 flex-row justify-content-center align-items-end')
     return child
 
@@ -250,7 +300,8 @@ layout = dbc.Container([
     html.Div(id='laser-container', children=[]),
     dbc.Row([dbc.Col(dbc.Button("Add Laser", id="start-add-laser-dialog", n_clicks=0), width='auto'),
              dbc.Col(dbc.Button("Load/Save Profile", id="start-profile-dialog", n_clicks=0),width='auto')]),
-    dcc.Store(id='tab-data', data = {}, storage_type='memory')
+    dcc.Store(id='tab-data', data = {}, storage_type='memory'),
+    dcc.Interval(id='home-page-load', interval=100, n_intervals=0, max_intervals=1)
 ], fluid=True)
 
 clientside_callback(
@@ -259,12 +310,15 @@ clientside_callback(
         function_name='update_plot'
     ),
     Output({'type': 'data_plot', 'index': MATCH}, 'figure'),
+    Output({'type': 'bar_plot', 'index': MATCH}, 'figure'),
     Output({'type': 'freq_info', 'index': MATCH}, 'children'),
     Output({'type': 'freq_digits', 'index': MATCH}, 'children'),
     Output({'type': 'laser-metadata', 'index': MATCH}, 'data', allow_duplicate=True),
     Output({'type': 'freq_digits', 'index': MATCH}, 'style'),
+    Output({'type': 'log-msg', 'index': MATCH}, 'data', allow_duplicate=True),
     Input('wm_data', 'data'),
     State({'type': 'data_plot', 'index': MATCH}, 'figure'),
+    State({'type': 'bar_plot', 'index': MATCH}, 'figure'),
     State({'type': 'laser-metadata', 'index': MATCH}, 'data'),
     State({'type': 'freq_digits', 'index': MATCH}, 'style'),
     prevent_initial_call=True
@@ -488,13 +542,19 @@ def show_and_hide_add_profile_name(selected_value):
     Input('save-profile', 'n_clicks'),
     State('profile-name', 'value'),
     State('tab-data', 'data'),
+    State('uuid', 'data'),
     prevent_initial_call=True
 )
-def save_profile(btn, name, data):
+def save_profile(btn, name, data, uuid):
     new_fname = profile_dir + name + '.yml'
     del data['pos_to_id_map']
     with open(new_fname, 'w') as f:
         yaml.dump(data, f)
+    with open(users_file, 'r') as f:
+        users_data = yaml.safe_load(f) or {}
+    users_data[uuid] = name
+    with open(users_file, 'w') as f:
+        yaml.dump(users_data, f)
 
 @callback(
     Output('add-profile-dialog', 'is_open', allow_duplicate=True),
@@ -517,10 +577,18 @@ def delete_profile(btn, name):
     Output('msg_title', 'children'),
     Output('msg_content', 'children'),
     Input('load-profile', 'n_clicks'),
+    Input('home-page-load', 'n_intervals'),
     State('profile-selector', 'value'),
+    State('uuid', 'data'),
     prevent_initial_call=True
 )
-def load_profile(btn, name):
+def load_profile(btn, on_load, name, uuid):
+    triggered_id = ctx.triggered_id
+    if triggered_id == 'home-page-load':
+        with open(users_file, 'r') as f:
+            users_data = yaml.safe_load(f) or {}
+        if uuid in (users_data):
+            name = users_data[uuid]
     if name is None:
         return no_update, no_update, no_update, no_update, no_update, no_update
     tot_fname = profile_dir + name
@@ -536,7 +604,7 @@ def load_profile(btn, name):
         for i in range(data['n_figs']):
             # Make sure no problem here, before creating any blocks
             params.append([data['names'][i], data['freqs'][i], data['tols'][i], data['nptss'][i], data['lock_tols'][i]])
-        id = -1 # negative ids for each of these blocks
+        id = -2 # negative ids for each of these blocks. -1 reserved since global log-msg has index -1
         new_children = []
         new_pos_to_id_map = []
         for i in range(data['n_figs']):
@@ -544,6 +612,11 @@ def load_profile(btn, name):
             new_pos_to_id_map.append(id)
             id = id - 1
         data['pos_to_id_map'] = new_pos_to_id_map
+        with open(users_file, 'r') as f:
+            users_data = yaml.safe_load(f) or {}
+        users_data[uuid] = name
+        with open(users_file, 'w') as f:
+            yaml.dump(users_data, f)
         return 0, data, new_children, 0, no_update, no_update
     except Exception as e:
         return 0, no_update, no_update, 1, 'Error', 'Message: ' + str(e)

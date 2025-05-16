@@ -1,18 +1,22 @@
 import dash
 from dash import Dash, html, dcc, callback, Input, Output, State, Patch, ALL, MATCH, ctx, no_update, clientside_callback, ClientsideFunction
 import dash_bootstrap_components as dbc
-import zmq
 from lib.wavemeter import Wavemeter
+from lib.dataSaver import DataSaver
 import numpy as np
 import signal
 import sys
 import yaml
 import os
+from flask import request, jsonify
+from datetime import datetime
+import atexit
 
 # cur_targets = np.array([750000, 713289.100, 650000, 508848.922, 508848.402, 508332.499, 467044.500, 462900, 445000, 434912.747, 391016, 365753, 328966, 320008.235, 309602.628, 296387, 282288.730])
-cur_targets = np.array([508848.922, 508332.499, 309602.628, 296387, 282288.730])
+# cur_targets = np.array([508848.922, 508332.499, 309602.628, 296387, 282288.730])
 calib_profile_file = './data/calibration.yml'
 curr_calib_file = './data/current_calibration.yml'
+logs_dir = './logs/'
 
 res_name = 'Calibration: None'
 calib_freq = None
@@ -26,7 +30,9 @@ if os.path.exists(curr_calib_file):
         calib_tol = data['tol']
 
 app = Dash(title='Fast Wavemeter', prevent_initial_callbacks="initial_duplicate", external_stylesheets=[dbc.themes.BOOTSTRAP], use_pages=True)
-wavemeter = Wavemeter(targets=cur_targets, calibration=calib_freq, calibration_tol=calib_tol)
+# wavemeter = Wavemeter(targets=cur_targets, calibration=calib_freq, calibration_tol=calib_tol)
+wavemeter = Wavemeter(port='COM10', calibration=calib_freq, calibration_tol=calib_tol)
+ds = DataSaver(wavemeter, '.')
 # wavemeter = Wavemeter(targets=np.array([713289.100, 650000, 508848.922]))
 
 calib_modal = html.Div(
@@ -105,12 +111,13 @@ app.layout = dbc.Container([
     dbc.Row([html.Div('Fast Wavemeter', className='text-center display-3 fw-bold mb-4')]),
     dbc.Row([dbc.Col([dbc.Nav([dbc.NavItem(dbc.NavLink("Home", active='exact', href="/")),
              dbc.NavItem(dbc.NavLink("Help", active='exact', href="/help")),
+             dbc.NavItem(dbc.NavLink("Log", active='exact', href="/log"))
     ], pills=True, fill=True, justified=True)], width={'size': 4, 'offset': 4})]),
     html.Hr(className="my-4 mx-auto w-75 border border-2 border-secondary"),
     html.Div(id = 'all-current-freqs', children='', className='text-center mb-2 text-wrap'),
-    dbc.Row([dbc.Col(html.Div(id = 'wm-error-text', children='', className='text-center mb-2 text-wrap')),
-             dbc.Col(dbc.Button('Change Laser Calibration', id = 'change-laser-calib-btn', n_clicks=0)),
-             dbc.Col(html.Div(id = 'curr-calibration', children='', className='mb-2 text-wrap'))
+    dbc.Row([dbc.Col(html.Div(id = 'wm-error-text', children='', className='text-center mb-2 text-wrap wm-error-text')),
+             dbc.Col(dbc.Button('Change Laser Calibration', id = 'change-laser-calib-btn', n_clicks=0, className='calibration-btn-text')),
+             dbc.Col(html.Div(id = 'curr-calibration', children='', className='mb-2 text-wrap calibration-title-text'))
     ]),
     calib_modal,
     msg_modal,
@@ -123,10 +130,24 @@ app.layout = dbc.Container([
     dcc.Interval(id='get_wm_data', interval=100),
     dcc.Interval(id='get_wm_err_data', interval=1000), # Poll for this less often
     dcc.Interval(id='update_all_freqs_display', interval=1000),
+    dcc.Interval(id='server-page-load', interval=100, n_intervals=0, max_intervals=0),
     dcc.Store(id='wm_data', storage_type='local'),
     dcc.Store(id='wm_err_data', storage_type='local'),
-    dcc.Store(id='calib_cache', storage_type='local')
+    dcc.Store(id='calib_cache', storage_type='local'),
+    dcc.Interval(id='get-uuid', interval=1, n_intervals=0, max_intervals=0),
+    dcc.Store(id='uuid', storage_type='local'),
+    dcc.Store(id={'type': 'log-msg', 'index': -1}, storage_type='local')
 ], fluid=True)
+
+clientside_callback(
+    ClientsideFunction(
+        namespace='clientside',
+        function_name='get_uuid'
+    ),
+    Output('uuid', 'data'),
+    Input('get-uuid', 'n_intervals'),
+    State('uuid', 'data')
+)
 
 clientside_callback(
     ClientsideFunction(
@@ -154,6 +175,16 @@ clientside_callback(
 def update_wm_data(n_intervals):
     freqs, amps, statuses, times = wavemeter.get_all_data()
     return [freqs, amps, statuses, times]
+
+@app.server.route('/data', methods=['GET'])
+def serve_wm_data():
+    freqs, amps, statuses, times = wavemeter.get_all_data()
+    result = dict()
+    result['freqs'] = freqs.tolist()
+    result['amps'] = amps.tolist()
+    result['statuses'] = statuses
+    result['times'] = times.tolist()
+    return jsonify(result)
 
 @callback(
     Output('wm_err_data', 'data'),
@@ -288,12 +319,45 @@ clientside_callback(
     prevent_initial_call=True
 )
 
+@callback(
+    Input({'type': 'log-msg', 'index': ALL}, 'data'),
+    State('uuid', 'data'),
+    prevent_initial_call=True
+)
+def append_to_log_file(msgs, uuid):
+    fname = logs_dir + uuid + '.txt'
+    current_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+    triggered_id = ctx.triggered_id
+    if triggered_id is None:
+        return
+    all_inputs = ctx.inputs_list[0]
+    for i, input_obj in enumerate(all_inputs):
+        if input_obj['id'] == triggered_id:
+            msg = msgs[i]
+    if msg is None:
+        return
+    with open(fname, 'a') as f:
+        f.write(current_time + ', ' + msg + "\n")
+
+clientside_callback(
+    ClientsideFunction(
+        namespace='clientside',
+        function_name='browser_open_msg'
+    ),
+    Output({'type': 'log-msg', 'index': -1}, 'data', allow_duplicate=True),
+    Input('server-page-load', 'n_intervals'),
+    prevent_initial_call=True
+)
+
 def cleanup():
     global wavemeter
     wavemeter.stop_worker()
+    global ds
+    ds.stop_worker()
     sys.exit(0)
 
-signal.signal(signal.SIGINT, cleanup)
+# signal.signal(signal.SIGINT, cleanup)
+atexit.register(cleanup)
 
 # Run the app
 if __name__ == '__main__':

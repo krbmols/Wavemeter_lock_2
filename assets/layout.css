@@ -12,6 +12,20 @@
     text-decoration: underline;
 }
 
+.calibration-title-text {
+    font-size: 20px;
+    font-weight: 3px;
+    text-decoration: underline;
+}
+
+.calibration-btn-text {
+    font-size: 16px;
+}
+
+.wm-error-text {
+    font-size: 18px;
+}
+
 .freq-info-text-1 {
     font-size: 20px;
 }
@@ -67,6 +81,16 @@
     .lock-tol-text {
         font-size: 12px;
     }
+    .calibration-title-text {
+        font-size: 16px;
+    }
+    .calibration-btn-text {
+        font-size: 12px;
+    }
+    .wm-error-text {
+        font-size: 14px;
+    }
+    
 }
 
 /* for bootstrap < sm */
