@@ -369,6 +369,9 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
             for (let i = 0; i < ctx.states_list[0].length; i++) {
                 if (ctx.states_list[0][i].id.index == id) {
                     // Update the tab_data with the new values
+                    if (laser_names[i] == '') {
+                        break; // Skip if name is empty
+                    }
                     tab_data['names'][pos] = laser_names[i];
                     tab_data['freqs'][pos] = laser_freqs[i];
                     tab_data['tols'][pos] = laser_tols[i];

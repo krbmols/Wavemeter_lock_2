@@ -17,8 +17,8 @@ cur_targets = np.array([508848.922, 508332.499, 309602.628, 296387, 282288.730])
 calib_profile_file = './data/calibration.yml'
 curr_calib_file = './data/current_calibration.yml'
 logs_dir = './logs/'
-# save_directory = "C:\\Users\\Krb-Logging\\wavemeter"
-save_directory = '.'
+save_directory = "C:\\Users\\Krb-Logging\\wavemeter"
+# save_directory = '.'
 
 res_name = 'Calibration: None'
 calib_freq = None
