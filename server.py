@@ -30,10 +30,10 @@ if os.path.exists(curr_calib_file):
         calib_freq = data['freq']
         calib_tol = data['tol']
 
-app = Dash(title='Fast Wavemeter', prevent_initial_callbacks="initial_duplicate", external_stylesheets=[dbc.themes.BOOTSTRAP], use_pages=True)
-wavemeter = Wavemeter(targets=cur_targets, calibration=calib_freq, calibration_tol=calib_tol)
-# wavemeter = Wavemeter(port='COM10', cache_n_measurements = 2000, calibration=calib_freq, calibration_tol=calib_tol)
-# ds = DataSaver(wavemeter, save_directory)
+app = Dash(title='Fast Wavemeter', update_title=None, prevent_initial_callbacks="initial_duplicate", external_stylesheets=[dbc.themes.BOOTSTRAP], use_pages=True)
+# wavemeter = Wavemeter(targets=cur_targets, calibration=calib_freq, calibration_tol=calib_tol)
+wavemeter = Wavemeter(port='COM10', cache_n_measurements = 2000, calibration=calib_freq, calibration_tol=calib_tol)
+ds = DataSaver(wavemeter, save_directory)
 # wavemeter = Wavemeter(targets=np.array([713289.100, 650000, 508848.922]))
 
 calib_modal = html.Div(
@@ -337,7 +337,7 @@ def append_to_log_file(msgs, uuid):
             msg = msgs[i]
     if msg is None:
         return
-    with open(fname, 'a') as f:
+    with open(fname, 'a+') as f:
         f.write(current_time + ', ' + msg + "\n")
 
 clientside_callback(

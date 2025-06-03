@@ -502,6 +502,37 @@ clientside_callback(
     prevent_initial_call=True
 )
 
+clientside_callback(
+    ClientsideFunction(
+        namespace='clientside',
+        function_name='update_tab_data_from_edit'
+    ),
+    Output('tab-data', 'data', allow_duplicate=True),
+    Input({'type': "finish-laser-edit", 'index': ALL}, 'n_clicks'),
+    State({'type': 'laser-name-edit', 'index': ALL}, 'value'),
+    State({'type': 'laser-center-freq-edit', 'index': ALL}, 'value'),
+    State({'type': 'laser-tol-edit', 'index': ALL}, 'value'),
+    State({'type': 'lock-tol-edit', 'index': ALL}, 'value'),
+    State({'type': 'npts-input-edit', 'index': ALL}, 'value'),
+    State('tab-data', 'data'),
+    prevent_initial_call=True
+)
+# def update_tab_data_from_edit(btn, name, center_f, laser_tol, lock_tol, npts, tab_data):
+#     print(ctx)
+#     # triggered_id = ctx.triggered_id
+#     # id = triggered_id['index']
+#     # try:
+#     #     pos = tab_data['pos_to_id_map'].index(id)
+#     # except ValueError:
+#     #     return no_update
+#     # new_tab_data = Patch()
+#     # new_tab_data['names'][pos] = name
+#     # new_tab_data['freqs'][pos] = center_f
+#     # new_tab_data['tols'][pos] = laser_tol
+#     # new_tab_data['nptss'][pos] = npts
+#     # new_tab_data['lock_tols'][pos] = lock_tol
+#     return no_update
+
 @callback(
     Output('add-profile-dialog', 'is_open', allow_duplicate=True),
     Output('profile-selector', 'options'),
@@ -552,7 +583,7 @@ def save_profile(btn, name, data, uuid):
         yaml.dump(data, f)
     with open(users_file, 'r') as f:
         users_data = yaml.safe_load(f) or {}
-    users_data[uuid] = name
+    users_data[uuid] = name + '.yml'
     with open(users_file, 'w') as f:
         yaml.dump(users_data, f)
 
@@ -568,6 +599,16 @@ def delete_profile(btn, name):
     if os.path.exists(full_name):
         os.remove(full_name)
     return 0
+
+# clientside_callback(
+#     ClientsideFunction(
+#         namespace='clientside',
+#         function_name='browser_open_msg'
+#     ),
+#     Output({'type': 'log-msg', 'index': -1}, 'data', allow_duplicate=True),
+#     Input('home-page-load', 'n_intervals'),
+#     prevent_initial_call=True
+# )
 
 @callback(
     Output('add-profile-dialog', 'is_open', allow_duplicate=True),

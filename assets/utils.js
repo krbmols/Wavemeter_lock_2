@@ -260,6 +260,7 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
         prevent_initial_call=True
         */
         update_laser_metadata: function(n_clicks, metadata, laser_name, laser_center_f, laser_tol, lock_tol, npts) {
+            const ctx = window.dash_clientside.callback_context;
             if (n_clicks > 0) {
                 metadata['name'] = laser_name;
                 metadata['f'] = laser_center_f;
@@ -339,7 +340,44 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
         // Input('server-page-load', 'n_intervals')
         browser_open_msg: function(n_intervals) {
             console.log("Here");
-            return 'Browser tab opened.';
+            return 'Browser tab opened';
+        },
+        /*
+        Output('tab-data', 'data', allow_duplicate=True),
+        Input({'type': "finish-laser-edit", 'index': ALL}, 'n_clicks'),
+        State({'type': 'laser-name-edit', 'index': ALL}, 'value'),
+        State({'type': 'laser-center-freq-edit', 'index': ALL}, 'value'),
+        State({'type': 'laser-tol-edit', 'index': ALL}, 'value'),
+        State({'type': 'lock-tol-edit', 'index': ALL}, 'value'),
+        State({'type': 'npts-input-edit', 'index': ALL}, 'value'),
+        State('tab-data', 'data'),
+        */
+        update_tab_data_from_edit: function(n_clicks, laser_names, laser_freqs, laser_tols, lock_tols, npts, tab_data) {
+            const ctx = window.dash_clientside.callback_context;
+            const id = ctx.triggered_id.index;
+            let pos = -1;;
+            for (let i = 0; i < tab_data['pos_to_id_map'].length; i++) {
+                if (tab_data['pos_to_id_map'][i] == id) {
+                    pos = i;
+                    break;
+                }
+            }
+            if (pos == -1) {
+                return window.dash_clientside.no_update; // No matching position found
+            }
+            // Find the index of the laser being edited
+            for (let i = 0; i < ctx.states_list[0].length; i++) {
+                if (ctx.states_list[0][i].id.index == id) {
+                    // Update the tab_data with the new values
+                    tab_data['names'][pos] = laser_names[i];
+                    tab_data['freqs'][pos] = laser_freqs[i];
+                    tab_data['tols'][pos] = laser_tols[i];
+                    tab_data['lock_tols'][pos] = lock_tols[i];
+                    tab_data['nptss'][pos] = npts[i];
+                    return tab_data;
+                }
+            }
+            return window.dash_clientside.no_update;
         }
     }
 });

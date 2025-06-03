@@ -12,9 +12,9 @@ class Wavemeter(object):
         Stop = 1
 
     def __init__(self, port= '', targets=np.array([]), cache_n_measurements = 2000, calibration=None, calibration_cache_n=10, calibration_tol=50):
-        # self.device = BristolRS422(port)
+        self.device = BristolRS422(port)
         print("Initializing wavemeter device")
-        self.device = DummyDevice.DummyDevice(targets)
+        # self.device = DummyDevice.DummyDevice(targets)
         self.targets = targets
         self.calib = calibration
         self.calib_cache_size = calibration_cache_n # coded on start. Currently not changeable, since I don't want to deal with resizing the ring buffer
