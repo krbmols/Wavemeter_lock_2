@@ -69,6 +69,7 @@ class Wavemeter(object):
         # worker function
         while self.__check_worker_req() != self.WorkerRequest.Stop:
             wavelength, saturation, status, wmTime = self.device.get_measurement()
+            this_time = perf_counter()
             if wavelength > 200:
                 now = time()
                 raw_freq = self.c / wavelength
@@ -110,7 +111,9 @@ class Wavemeter(object):
                         self.cache_loc = 0
                     else:
                         self.cache_loc = cache_location + 1
-            sleep(0.001)
+            cur_time = perf_counter()
+            while cur_time - this_time < 0.001:
+                cur_time = perf_counter()
         print("Worker finishing")
 
     def set_calibration(self, calibration, tolerance=None):

@@ -17,7 +17,8 @@ cur_targets = np.array([508848.922, 508332.499, 309602.628, 296387, 282288.730])
 calib_profile_file = './data/calibration.yml'
 curr_calib_file = './data/current_calibration.yml'
 logs_dir = './logs/'
-save_directory = "C:\\Users\\Krb-Logging\\wavemeter"
+# save_directory = "C:\\Users\\Krb-Logging\\wavemeter"
+save_directory = '.'
 
 res_name = 'Calibration: None'
 calib_freq = None
@@ -175,6 +176,7 @@ clientside_callback(
 )
 def update_wm_data(n_intervals):
     freqs, amps, statuses, times = wavemeter.get_all_data()
+    # print(len(times))
     return [freqs, amps, statuses, times]
 
 @app.server.route('/data', methods=['GET'])
