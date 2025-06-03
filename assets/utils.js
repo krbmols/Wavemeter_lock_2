@@ -91,10 +91,12 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
             const new_times = [];
             const cur_times = [...updatedFig.data[0].x];
             let amp = info['cur_amp'];
+
             for (let i = 0; i < newData[0].length; i++){
                 let this_freq = newData[0][i];
                 let this_time = newData[3][i];
-                if (Math.abs(this_freq - center_freq) < freq_tol && !(cur_times.includes(this_time))) {
+                // if (Math.abs(this_freq - center_freq) < freq_tol && !(cur_times.includes(this_time))) {
+                if (Math.abs(this_freq - center_freq) < freq_tol && (cur_times.length == 0 || this_time > cur_times.slice(-1)[0])) {
                     new_freqs.push((this_freq - center_freq) * 1e3);
                     new_times.push(this_time);
                     amp = newData[1][i];
@@ -106,7 +108,7 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
                 tot_times.splice(0, tot_times.length - n_pts);
                 tot_freqs.splice(0, tot_freqs.length - n_pts);
             }
-            console.log(tot_times);
+            // console.log(tot_times);
             updatedFig.data[0].x = tot_times;
             updatedFig.data[0].y = tot_freqs; // In MHz
 
