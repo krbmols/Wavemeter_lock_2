@@ -106,7 +106,7 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
                 tot_times.splice(0, tot_times.length - n_pts);
                 tot_freqs.splice(0, tot_freqs.length - n_pts);
             }
-
+            console.log(tot_times);
             updatedFig.data[0].x = tot_times;
             updatedFig.data[0].y = tot_freqs; // In MHz
 

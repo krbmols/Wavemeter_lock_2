@@ -100,7 +100,10 @@ class DataSaver(object):
                 for idx, freq in enumerate(write_freqs):
                     outputBody.append(freq)
                     outputBody.append(write_amps[idx])
-                outputBody.append(err * 1e3)
+                if err is None:
+                    outputBody.append(0)
+                else:
+                    outputBody.append(err * 1e3)
                 with open(path, 'a', newline='') as f:
                     write = csv.writer(f)
                     write.writerow(outputBody)

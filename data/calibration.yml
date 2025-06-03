@@ -5,5 +5,5 @@ NaMOT:
   freq_GHz: 508848.92
   tol_GHz: 0.5
 STIRAP:
-  freq_GHz: 309602.6
+  freq_GHz: 309602.628
   tol_GHz: 0.5

@@ -4,17 +4,17 @@ import threading
 from enum import Enum
 from datetime import datetime
 import numpy as np
-from time import time
+from time import time, perf_counter, sleep
 
 class Wavemeter(object):
     class WorkerRequest(Enum):
         NoRequest = 0
         Stop = 1
 
-    def __init__(self, port= '', targets=np.array([]), cache_n_measurements = 200, calibration=None, calibration_cache_n=10, calibration_tol=50):
-        self.device = BristolRS422(port)
+    def __init__(self, port= '', targets=np.array([]), cache_n_measurements = 2000, calibration=None, calibration_cache_n=10, calibration_tol=50):
+        # self.device = BristolRS422(port)
         print("Initializing wavemeter device")
-        # self.device = DummyDevice.DummyDevice(targets)
+        self.device = DummyDevice.DummyDevice(targets)
         self.targets = targets
         self.calib = calibration
         self.calib_cache_size = calibration_cache_n # coded on start. Currently not changeable, since I don't want to deal with resizing the ring buffer
@@ -69,46 +69,48 @@ class Wavemeter(object):
         # worker function
         while self.__check_worker_req() != self.WorkerRequest.Stop:
             wavelength, saturation, status, wmTime = self.device.get_measurement()
-            now = time()
-            raw_freq = self.c / wavelength
-            if self.calib: 
-                if np.abs(raw_freq - self.calib) < self.calib_tol:
-                    self.calib_err_cache[self.calib_cache_loc] = raw_freq - self.calib
-                    new_loc = self.calib_cache_loc + 1
-                    if self.calib_cache_first_pass:
-                        avg_err = np.mean(self.calib_err_cache[:new_loc])
-                    else:
-                        avg_err = np.mean(self.calib_err_cache)
-                    if new_loc >= self.calib_cache_size:
+            if wavelength > 200:
+                now = time()
+                raw_freq = self.c / wavelength
+                if self.calib: 
+                    if np.abs(raw_freq - self.calib) < self.calib_tol:
+                        self.calib_err_cache[self.calib_cache_loc] = raw_freq - self.calib
+                        new_loc = self.calib_cache_loc + 1
                         if self.calib_cache_first_pass:
-                            self.calib_cache_first_pass = False
-                        self.calib_cache_loc = 0
+                            avg_err = np.mean(self.calib_err_cache[:new_loc])
+                        else:
+                            avg_err = np.mean(self.calib_err_cache)
+                        if new_loc >= self.calib_cache_size:
+                            if self.calib_cache_first_pass:
+                                self.calib_cache_first_pass = False
+                            self.calib_cache_loc = 0
+                        else:
+                            self.calib_cache_loc = new_loc
                     else:
-                        self.calib_cache_loc = new_loc
-                else:
-                    if self.calib_cache_first_pass and self.calib_cache_loc == 0:
-                        # No data has arrived yet
-                        avg_err = 0
-                    elif self.calib_cache_first_pass:
-                        avg_err = np.mean(self.calib_err_cache[:self.calib_cache_loc])
+                        if self.calib_cache_first_pass and self.calib_cache_loc == 0:
+                            # No data has arrived yet
+                            avg_err = 0
+                        elif self.calib_cache_first_pass:
+                            avg_err = np.mean(self.calib_err_cache[:self.calib_cache_loc])
+                        else:
+                            avg_err = np.mean(self.calib_err_cache)
+                    prop = raw_freq / self.calib
+                    raw_freq -= avg_err * prop
+                with self.data_lock:
+                    cache_location = self.cache_loc
+                    # print(cache_location)
+                    self.cache_freqs[cache_location] = raw_freq
+                    self.cache_amps[cache_location] = saturation
+                    self.cache_times[cache_location] = now
+                    self.cache_statuses[cache_location] = status
+                    if cache_location + 1 >= self.cache_size:
+                        # print("Entering reset")
+                        if self.cache_first_pass:
+                            self.cache_first_pass = False
+                        self.cache_loc = 0
                     else:
-                        avg_err = np.mean(self.calib_err_cache)
-                prop = raw_freq / self.calib
-                raw_freq -= avg_err * prop
-            with self.data_lock:
-                cache_location = self.cache_loc
-                # print(cache_location)
-                self.cache_freqs[cache_location] = raw_freq
-                self.cache_amps[cache_location] = saturation
-                self.cache_times[cache_location] = now
-                self.cache_statuses[cache_location] = status
-                if cache_location + 1 >= self.cache_size:
-                    # print("Entering reset")
-                    if self.cache_first_pass:
-                        self.cache_first_pass = False
-                    self.cache_loc = 0
-                else:
-                    self.cache_loc = cache_location + 1
+                        self.cache_loc = cache_location + 1
+            sleep(0.001)
         print("Worker finishing")
 
     def set_calibration(self, calibration, tolerance=None):

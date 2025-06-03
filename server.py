@@ -13,10 +13,11 @@ from datetime import datetime
 import atexit
 
 # cur_targets = np.array([750000, 713289.100, 650000, 508848.922, 508848.402, 508332.499, 467044.500, 462900, 445000, 434912.747, 391016, 365753, 328966, 320008.235, 309602.628, 296387, 282288.730])
-# cur_targets = np.array([508848.922, 508332.499, 309602.628, 296387, 282288.730])
+cur_targets = np.array([508848.922, 508332.499, 309602.628, 296387, 282288.730])
 calib_profile_file = './data/calibration.yml'
 curr_calib_file = './data/current_calibration.yml'
 logs_dir = './logs/'
+save_directory = "C:\\Users\\Krb-Logging\\wavemeter"
 
 res_name = 'Calibration: None'
 calib_freq = None
@@ -30,9 +31,9 @@ if os.path.exists(curr_calib_file):
         calib_tol = data['tol']
 
 app = Dash(title='Fast Wavemeter', prevent_initial_callbacks="initial_duplicate", external_stylesheets=[dbc.themes.BOOTSTRAP], use_pages=True)
-# wavemeter = Wavemeter(targets=cur_targets, calibration=calib_freq, calibration_tol=calib_tol)
-wavemeter = Wavemeter(port='COM10', calibration=calib_freq, calibration_tol=calib_tol)
-ds = DataSaver(wavemeter, '.')
+wavemeter = Wavemeter(targets=cur_targets, calibration=calib_freq, calibration_tol=calib_tol)
+# wavemeter = Wavemeter(port='COM10', cache_n_measurements = 2000, calibration=calib_freq, calibration_tol=calib_tol)
+ds = DataSaver(wavemeter, save_directory)
 # wavemeter = Wavemeter(targets=np.array([713289.100, 650000, 508848.922]))
 
 calib_modal = html.Div(
@@ -174,6 +175,10 @@ clientside_callback(
 )
 def update_wm_data(n_intervals):
     freqs, amps, statuses, times = wavemeter.get_all_data()
+    # if len(times) > 0:
+    #     np_times = np.array(times)
+    #     print(np_times)
+    #     print(freqs)
     return [freqs, amps, statuses, times]
 
 @app.server.route('/data', methods=['GET'])
