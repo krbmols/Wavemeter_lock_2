@@ -328,19 +328,20 @@ clientside_callback(
     prevent_initial_call=True
 )
 def append_to_log_file(msgs, uuid):
-    fname = logs_dir + uuid + '.txt'
-    current_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
-    triggered_id = ctx.triggered_id
-    if triggered_id is None:
-        return
-    all_inputs = ctx.inputs_list[0]
-    for i, input_obj in enumerate(all_inputs):
-        if input_obj['id'] == triggered_id:
-            msg = msgs[i]
-    if msg is None:
-        return
-    with open(fname, 'a+') as f:
-        f.write(current_time + ', ' + msg + "\n")
+    if uuid is not None:
+        fname = logs_dir + uuid + '.txt'
+        current_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+        triggered_id = ctx.triggered_id
+        if triggered_id is None:
+            return
+        all_inputs = ctx.inputs_list[0]
+        for i, input_obj in enumerate(all_inputs):
+            if input_obj['id'] == triggered_id:
+                msg = msgs[i]
+        if msg is None:
+            return
+        with open(fname, 'a+') as f:
+            f.write(current_time + ', ' + msg + "\n")
 
 clientside_callback(
     ClientsideFunction(
