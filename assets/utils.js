@@ -250,6 +250,7 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
         Output({'type': 'edit-laser-dialog', 'index': MATCH}, 'is_open', allow_duplicate=True),
         Output({'type': 'laser_title', 'index': MATCH}, 'children'),
         Output({'type': 'lock-btn', 'index': MATCH}, 'label'),
+        Output({'type': 'lock-btn', 'index': MATCH}, 'value'),
         Input({'type': "finish-laser-edit", 'index': MATCH}, 'n_clicks'),
         State({'type': 'laser-metadata', 'index': MATCH}, 'data'),
         State({'type': 'laser-name-edit', 'index': MATCH}, 'value'),
@@ -257,9 +258,10 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
         State({'type': 'laser-tol-edit', 'index': MATCH}, 'value'),
         State({'type': 'lock-tol-edit', 'index': MATCH}, 'value'),
         State({'type': 'npts-input-edit', 'index': MATCH}, 'value'),
+        State({'type': 'laser-lock-btn-edit', 'index': MATCH}, 'value'),
         prevent_initial_call=True
         */
-        update_laser_metadata: function(n_clicks, metadata, laser_name, laser_center_f, laser_tol, lock_tol, npts) {
+        update_laser_metadata: function(n_clicks, metadata, laser_name, laser_center_f, laser_tol, lock_tol, npts, laser_lock_btn) {
             const ctx = window.dash_clientside.callback_context;
             if (n_clicks > 0) {
                 metadata['name'] = laser_name;
@@ -267,11 +269,12 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
                 metadata['df'] = laser_tol;
                 metadata['n_pts'] = npts;
                 metadata['lock_tol_MHz'] = lock_tol;
+                metadata['lock_status'] = laser_lock_btn;
                 new_label = 'Unlock Alert (' + '\u00B1' + lock_tol.toString() + ' MHz)'
-                return [metadata, 0, laser_name, new_label];
+                return [metadata, 0, laser_name, new_label, laser_lock_btn];
             }
             else {
-                return [window.dash_clientside.no_update,  window.dash_clientside.no_update,  window.dash_clientside.no_update, window.dash_clientside.no_update];
+                return [window.dash_clientside.no_update,  window.dash_clientside.no_update,  window.dash_clientside.no_update, window.dash_clientside.no_update,  window.dash_clientside.no_update];
             }
         },
         /*
@@ -344,15 +347,45 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
         },
         /*
         Output('tab-data', 'data', allow_duplicate=True),
+        Input({'type': 'lock-btn', 'index': ALL}, 'value'),
+        State('tab-data', 'data')
+        */
+        update_tab_data_from_lock: function(lock_btns, tab_data) {
+            const ctx = window.dash_clientside.callback_context;
+            const id = ctx.triggered_id.index;
+            let pos = -1;;
+            for (let i = 0; i < tab_data['pos_to_id_map'].length; i++) {
+                if (tab_data['pos_to_id_map'][i] == id) {
+                    pos = i;
+                    break;
+                }
+            }
+            if (pos == -1) {
+                return window.dash_clientside.no_update; // No matching position found
+            }
+            // Find the index of the laser being edited
+            console.log(ctx);
+            for (let i = 0; i < ctx.inputs_list[0].length; i++) {
+                if (ctx.inputs_list[0][i].id.index == id) {
+                    // Update the tab_data with the new value
+                    tab_data['track_locks'][pos] = lock_btns[i];
+                    return tab_data;
+                }
+            }
+            return window.dash_clientside.no_update;
+        },
+        /*
+        Output('tab-data', 'data', allow_duplicate=True),
         Input({'type': "finish-laser-edit", 'index': ALL}, 'n_clicks'),
         State({'type': 'laser-name-edit', 'index': ALL}, 'value'),
         State({'type': 'laser-center-freq-edit', 'index': ALL}, 'value'),
         State({'type': 'laser-tol-edit', 'index': ALL}, 'value'),
         State({'type': 'lock-tol-edit', 'index': ALL}, 'value'),
         State({'type': 'npts-input-edit', 'index': ALL}, 'value'),
+        State({'type': 'laser-lock-btn-edit', 'index': ALL}, 'value'),
         State('tab-data', 'data'),
         */
-        update_tab_data_from_edit: function(n_clicks, laser_names, laser_freqs, laser_tols, lock_tols, npts, tab_data) {
+        update_tab_data_from_edit: function(n_clicks, laser_names, laser_freqs, laser_tols, lock_tols, npts, lock_btn_statuses, tab_data) {
             const ctx = window.dash_clientside.callback_context;
             const id = ctx.triggered_id.index;
             let pos = -1;;
@@ -377,6 +410,7 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
                     tab_data['tols'][pos] = laser_tols[i];
                     tab_data['lock_tols'][pos] = lock_tols[i];
                     tab_data['nptss'][pos] = npts[i];
+                    tab_data['track_locks'][pos] = lock_btn_statuses[i];
                     return tab_data;
                 }
             }

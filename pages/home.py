@@ -112,6 +112,14 @@ def create_edit_modal(plot_id):
                             dbc.Col([
                                 dbc.Input(id={'type': 'lock-tol-edit', 'index': plot_id}, placeholder='Enter tolerance', type='number', value=5, className='h-100 w-100')
                             ], width=6, className='h-100')
+                        ], align='center'),
+                        dbc.Row([
+                            dbc.Col([
+                                html.Div('Track that laser is locked: ', className='h-100 w-100')
+                            ], width=6, className='h-100'),
+                            dbc.Col([
+                                dbc.Checkbox(id = {'type': 'laser-lock-btn-edit', 'index': plot_id})
+                            ], width=6, className='h-100')
                         ], align='center')
                     ]),
                     dbc.ModalFooter([
@@ -123,7 +131,7 @@ def create_edit_modal(plot_id):
                 is_open=False,
             )
 
-def create_new_block(plot_id, title='', name='', center_freq=508848.920, freq_tol=1, lock_tol_MHz = 5, n_pts=100):
+def create_new_block(plot_id, title='', name='', center_freq=508848.920, freq_tol=1, lock_tol_MHz = 5, n_pts=100, track_lock=False):
     info = dict()
     info['id'] = plot_id
     info['name'] = name
@@ -132,10 +140,10 @@ def create_new_block(plot_id, title='', name='', center_freq=508848.920, freq_to
     info['n_pts'] = n_pts
     info['edit_clicks'] = 0
     info['cur_amp'] = 0
-    info['lock_status'] = False
+    info['lock_status'] = track_lock
     info['lock_tol_MHz'] = lock_tol_MHz
     # At the moment, cur_lock_condition and lock_pt_counter is purely used for the log. 
-    info['cur_lock_condition'] = False
+    info['cur_lock_condition'] = track_lock
     info['lock_pt_counter'] = 5 # 5 consecutive points in the lock region is required, so upon creation, the lock condition is ready to be locked
     child = dbc.Row([
         dbc.Col([
@@ -153,7 +161,7 @@ def create_new_block(plot_id, title='', name='', center_freq=508848.920, freq_to
             dbc.Row([
                 dbc.Col([
                     dbc.Checkbox(id={'type': 'lock-btn', 'index': plot_id}, label=
-                                 html.Div(id={'type': 'lock-btn-text', 'index': plot_id}, children='Unlock Alert (' + '\u00B1' + str(lock_tol_MHz) + ' MHz)', className='lock-tol-text'), value=False)
+                                 html.Div(id={'type': 'lock-btn-text', 'index': plot_id}, children='Unlock Alert (' + '\u00B1' + str(lock_tol_MHz) + ' MHz)', className='lock-tol-text'), value=track_lock)
                 ], {'size': 3, 'offset': 4}),
                 dbc.Col([
                     dbc.Button("Edit", id={'type': 'edit-btn', 'index': plot_id}, n_clicks=0, size='sm')
@@ -243,7 +251,17 @@ modal = html.Div(
                         dbc.Col([
                             dbc.Input(id='lock-tol', placeholder='Enter tolerance', type='number', value=5, className='h-100 w-100')
                         ], width=6, className='h-100')
+                    ], align='center'),
+                    dbc.Row([
+                        dbc.Col([
+                            html.Div('Track that laser is locked: ', className='h-100 w-100')
+                        ], width=6, className='h-100'),
+                        dbc.Col([
+                            dbc.Checkbox(id = 'laser-lock-btn')
+                        ], width=6, className='h-100')
                     ], align='center')
+
+                    # dbc.Checkbox(id={'type': 'lock-btn', 'index': plot_id}
                 ]),
                 dbc.ModalFooter([
                     dbc.Button("Add", id="add-laser", className="ms-auto", n_clicks=0),
@@ -364,10 +382,11 @@ clientside_callback(
     State('laser-tol', 'value'),
     State('npts-input', 'value'),
     State('lock-tol', 'value'),
+    State('laser-lock-btn', 'value'),
     State('tab-data', 'data'),
     prevent_initial_call=True
 )
-def add_new_laser(n_clicks, laser_name, laser_freq, laser_tol, npts_input, lock_tol, tab_data):
+def add_new_laser(n_clicks, laser_name, laser_freq, laser_tol, npts_input, lock_tol, track_lock, tab_data):
     if n_clicks > 0:
         new_tab_data = Patch()
         if 'n_figs' in tab_data:
@@ -398,9 +417,13 @@ def add_new_laser(n_clicks, laser_name, laser_freq, laser_tol, npts_input, lock_
             new_tab_data['lock_tols'].append(lock_tol)
         else:
             new_tab_data['lock_tols'] = [lock_tol]
+        if 'track_locks' in tab_data:
+            new_tab_data['track_locks'].append(track_lock)
+        else:
+            new_tab_data['track_locks'] = [track_lock]
         new_tab_data['n_figs'] = pos + 1
         container = Patch()
-        container.append(create_new_block(n_clicks, title=laser_name, name=laser_name, center_freq=laser_freq, freq_tol=laser_tol, lock_tol_MHz=lock_tol, n_pts=npts_input))
+        container.append(create_new_block(n_clicks, title=laser_name, name=laser_name, center_freq=laser_freq, freq_tol=laser_tol, lock_tol_MHz=lock_tol, n_pts=npts_input, track_lock=track_lock))
         return container, 0, new_tab_data
     return [], 0, {}
 
@@ -432,6 +455,7 @@ def delete_laser(n_clicks_list, tab_data, cur_figs):
     del tab_data['tols'][pos]
     del tab_data['nptss'][pos]
     del tab_data['lock_tols'][pos]
+    del tab_data['track_locks'][pos]
     return cur_figs, tab_data
 
 # TODO move to clientside
@@ -443,6 +467,7 @@ def delete_laser(n_clicks_list, tab_data, cur_figs):
     Output({'type': 'laser-tol-edit', 'index': MATCH}, 'value'),
     Output({'type': 'npts-input-edit', 'index': MATCH}, 'value'),
     Output({'type': 'lock-tol-edit', 'index': MATCH}, 'value'),
+    Output({'type': 'laser-lock-btn-edit', 'index': MATCH}, 'value'),
     Output({'type': 'laser-metadata', 'index': MATCH}, 'data', allow_duplicate=True),
     Input({'type': 'edit-btn', 'index': MATCH}, 'n_clicks'),
     Input({'type': 'cancel-laser-edit', 'index': MATCH}, 'n_clicks'),
@@ -460,17 +485,18 @@ def open_edit_laser(n_clicks, n_clicks_cancel, metadata):
                 freq_tol = metadata['df']
                 npts = metadata['n_pts']
                 lock_tol = metadata['lock_tol_MHz']
+                lock_status = metadata['lock_status']
                 patched = Patch()
                 patched['edit_clicks'] = metadata['edit_clicks'] + 1
-                return 1, new_title, name, center_freq, freq_tol, npts, lock_tol, patched
+                return 1, new_title, name, center_freq, freq_tol, npts, lock_tol, lock_status, patched
             else:
-                return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
+                return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
         elif (triggered_id['type'] == 'cancel-laser-edit'):
-            return 0, no_update, no_update, no_update, no_update, no_update, no_update, no_update
+            return 0, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
         else:
-            return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
+            return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
     else:
-        return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
+        return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
     
 clientside_callback(
     ClientsideFunction(
@@ -481,6 +507,7 @@ clientside_callback(
     Output({'type': 'edit-laser-dialog', 'index': MATCH}, 'is_open', allow_duplicate=True),
     Output({'type': 'laser_title', 'index': MATCH}, 'children'),
     Output({'type': 'lock-btn-text', 'index': MATCH}, 'children'),
+    Output({'type': 'lock-btn', 'index': MATCH}, 'value'),
     Input({'type': "finish-laser-edit", 'index': MATCH}, 'n_clicks'),
     State({'type': 'laser-metadata', 'index': MATCH}, 'data'),
     State({'type': 'laser-name-edit', 'index': MATCH}, 'value'),
@@ -488,6 +515,7 @@ clientside_callback(
     State({'type': 'laser-tol-edit', 'index': MATCH}, 'value'),
     State({'type': 'lock-tol-edit', 'index': MATCH}, 'value'),
     State({'type': 'npts-input-edit', 'index': MATCH}, 'value'),
+    State({'type': 'laser-lock-btn-edit', 'index': MATCH}, 'value'),
     prevent_initial_call=True
 )
 
@@ -505,6 +533,17 @@ clientside_callback(
 clientside_callback(
     ClientsideFunction(
         namespace='clientside',
+        function_name='update_tab_data_from_lock'
+    ),
+    Output('tab-data', 'data', allow_duplicate=True),
+    Input({'type': 'lock-btn', 'index': ALL}, 'value'),
+    State('tab-data', 'data'),
+    prevent_initial_call=True
+)
+
+clientside_callback(
+    ClientsideFunction(
+        namespace='clientside',
         function_name='update_tab_data_from_edit'
     ),
     Output('tab-data', 'data', allow_duplicate=True),
@@ -514,6 +553,7 @@ clientside_callback(
     State({'type': 'laser-tol-edit', 'index': ALL}, 'value'),
     State({'type': 'lock-tol-edit', 'index': ALL}, 'value'),
     State({'type': 'npts-input-edit', 'index': ALL}, 'value'),
+    State({'type': 'laser-lock-btn-edit', 'index': ALL}, 'value'),
     State('tab-data', 'data'),
     prevent_initial_call=True
 )
@@ -571,19 +611,25 @@ def show_and_hide_add_profile_name(selected_value):
 @callback(
     Output('add-profile-dialog', 'is_open', allow_duplicate=True),
     Input('save-profile', 'n_clicks'),
+    State('profile-selector', 'value'),
     State('profile-name', 'value'),
     State('tab-data', 'data'),
     State('uuid', 'data'),
     prevent_initial_call=True
 )
-def save_profile(btn, name, data, uuid):
-    new_fname = profile_dir + name + '.yml'
+def save_profile(btn, prof, name, data, uuid):
+    if prof == 'Add new profile':
+        new_fname = profile_dir + name + '.yml'
+        users_fname = name + '.yml'
+    else:
+        new_fname = profile_dir + prof
+        users_fname = prof
     del data['pos_to_id_map']
     with open(new_fname, 'w') as f:
         yaml.dump(data, f)
     with open(users_file, 'r') as f:
         users_data = yaml.safe_load(f) or {}
-    users_data[uuid] = name + '.yml'
+    users_data[uuid] = users_fname
     with open(users_file, 'w') as f:
         yaml.dump(users_data, f)
 
@@ -642,14 +688,16 @@ def load_profile(btn, on_load, name, uuid):
         return 0, no_update, no_update, 1, 'Error', 'File not found, or could not be loaded safely'
     try:
         params = []
+        if 'track_locks' not in data:
+            data['track_locks'] = [False] * data['n_figs']
         for i in range(data['n_figs']):
             # Make sure no problem here, before creating any blocks
-            params.append([data['names'][i], data['freqs'][i], data['tols'][i], data['nptss'][i], data['lock_tols'][i]])
+            params.append([data['names'][i], data['freqs'][i], data['tols'][i], data['nptss'][i], data['lock_tols'][i], data['track_locks'][i]])
         id = -2 # negative ids for each of these blocks. -1 reserved since global log-msg has index -1
         new_children = []
         new_pos_to_id_map = []
         for i in range(data['n_figs']):
-            new_children.append(create_new_block(id, title=params[i][0], name=params[i][0], center_freq=params[i][1], freq_tol=params[i][2], lock_tol_MHz=params[i][4], n_pts=params[i][3]))
+            new_children.append(create_new_block(id, title=params[i][0], name=params[i][0], center_freq=params[i][1], freq_tol=params[i][2], lock_tol_MHz=params[i][4], n_pts=params[i][3], track_lock=params[i][5]))
             new_pos_to_id_map.append(id)
             id = id - 1
         data['pos_to_id_map'] = new_pos_to_id_map
