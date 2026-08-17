@@ -3,6 +3,8 @@ from dash import Dash, html, dcc, callback, Input, Output, State, Patch, ALL, MA
 import dash_bootstrap_components as dbc
 from lib.wavemeter import Wavemeter
 from lib.dataSaver import DataSaver
+from lib.latest import latest_frequencies, latest_near, DEFAULT_CLUSTER_TOL_GHZ, \
+    DEFAULT_MIN_AMP, DEFAULT_MAX_AGE_S, DEFAULT_N_AVERAGE
 import numpy as np
 import signal
 import sys
@@ -10,14 +12,17 @@ import yaml
 import os
 from flask import request, jsonify
 from datetime import datetime
+from time import time as unix_time
 import atexit
 
 # cur_targets = np.array([750000, 713289.100, 650000, 508848.922, 508848.402, 508332.499, 467044.500, 462900, 445000, 434912.747, 391016, 365753, 328966, 320008.235, 309602.628, 296387, 282288.730])
 cur_targets = np.array([508848.922, 508332.499, 309602.628, 296387, 282288.730])
 calib_profile_file = './data/calibration.yml'
 curr_calib_file = './data/current_calibration.yml'
-logs_dir = './logs/'
-save_directory = "C:\\Users\\Krb-Logging\\wavemeter"
+# Both may be overridden by the environment so the app can be run somewhere
+# other than the wavemeter PC (a test box, a spare machine) without editing it.
+logs_dir = os.environ.get('WAVEMETER_LOGS_DIR', './logs/')
+save_directory = os.environ.get('WAVEMETER_SAVE_DIR', "C:\\Users\\Krb-Logging\\wavemeter")
 # save_directory = '.'
 
 res_name = 'Calibration: None'
@@ -34,6 +39,11 @@ if os.path.exists(curr_calib_file):
 app = Dash(title='Fast Wavemeter', update_title=None, prevent_initial_callbacks="initial_duplicate", external_stylesheets=[dbc.themes.BOOTSTRAP], use_pages=True)
 # wavemeter = Wavemeter(targets=cur_targets, calibration=calib_freq, calibration_tol=calib_tol)
 wavemeter = Wavemeter(port='COM10', cache_n_measurements = 2000, calibration=calib_freq, calibration_tol=calib_tol)
+# Neither directory is created anywhere else, and both are written to as soon
+# as a browser connects, so make sure they exist before the workers start.
+os.makedirs(logs_dir, exist_ok=True)
+os.makedirs(save_directory, exist_ok=True)
+
 ds = DataSaver(wavemeter, save_directory)
 # wavemeter = Wavemeter(targets=np.array([713289.100, 650000, 508848.922]))
 
@@ -113,6 +123,7 @@ app.layout = dbc.Container([
     dbc.Row([html.Div('Fast Wavemeter', className='text-center display-3 fw-bold mb-4')]),
     dbc.Row([dbc.Col([dbc.Nav([dbc.NavItem(dbc.NavLink("Home", active='exact', href="/")),
              dbc.NavItem(dbc.NavLink("Help", active='exact', href="/help")),
+             dbc.NavItem(dbc.NavLink("Latest", active='exact', href="/latest")),
              dbc.NavItem(dbc.NavLink("Log", active='exact', href="/log"))
     ], pills=True, fill=True, justified=True)], width={'size': 4, 'offset': 4})]),
     html.Hr(className="my-4 mx-auto w-75 border border-2 border-secondary"),
@@ -187,6 +198,79 @@ def serve_wm_data():
     result['amps'] = amps.tolist()
     result['statuses'] = statuses
     result['times'] = times.tolist()
+    return jsonify(result)
+
+def _float_arg(name, default):
+    raw = request.args.get(name)
+    if raw is None or raw == '':
+        return default
+    return float(raw)
+
+
+@app.server.route('/api/latest', methods=['GET'])
+def serve_latest_data():
+    """The most recent reading of each laser, rather than the whole history.
+
+    ``/data`` hands back the entire 2000-sample cache and leaves the caller to
+    work out which samples belong to which laser.  This route does that work
+    server-side so a lock loop can poll one small document:
+
+        GET /api/latest
+            -> every distinct frequency currently on the wavemeter
+
+        GET /api/latest?freq=508848.92&tol=1.0
+            -> just the laser within 1 GHz of 508848.92 GHz, with its detuning
+
+    Optional in both forms: ``max_age`` (s), ``min_amp``, ``n`` (samples to
+    reduce for the median), and ``cluster_tol`` (GHz) for the listing form.
+    """
+    try:
+        max_age_s = _float_arg('max_age', DEFAULT_MAX_AGE_S)
+        min_amp = _float_arg('min_amp', DEFAULT_MIN_AMP)
+        n_average = int(_float_arg('n', DEFAULT_N_AVERAGE))
+        cluster_tol = _float_arg('cluster_tol', DEFAULT_CLUSTER_TOL_GHZ)
+        target = _float_arg('freq', None)
+        tol = _float_arg('tol', None)
+    except ValueError:
+        return jsonify({'error': 'query parameters must be numeric'}), 400
+
+    if n_average < 1:
+        return jsonify({'error': 'n must be at least 1'}), 400
+    if target is not None and tol is None:
+        return jsonify({'error': 'freq requires tol'}), 400
+
+    freqs, amps, statuses, times = wavemeter.get_all_data()
+    now = unix_time()
+
+    calib_err = wavemeter.get_wavemeter_error()
+    result = {
+        'time': now,
+        'max_age_s': max_age_s,
+        'min_amp': min_amp,
+        'calibration_error_MHz': None if calib_err is None else calib_err * 1e3,
+    }
+
+    if target is None:
+        result['lasers'] = latest_frequencies(
+            freqs, amps, statuses, times, now,
+            cluster_tol_GHz=cluster_tol, min_amp=min_amp,
+            max_age_s=max_age_s, n_average=n_average
+        )
+    else:
+        laser = latest_near(
+            freqs, amps, statuses, times, now, target, tol,
+            min_amp=min_amp, max_age_s=max_age_s, n_average=n_average
+        )
+        # A miss is a normal answer -- the laser may simply be dark -- so it is
+        # reported as found=false rather than as an HTTP error.
+        result['found'] = laser is not None
+        result['laser'] = laser
+        if laser is None:
+            result['reason'] = (
+                'no reading within %g GHz of %g GHz in the last %g s'
+                % (tol, target, max_age_s)
+            )
+
     return jsonify(result)
 
 @callback(
