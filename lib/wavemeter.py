@@ -29,6 +29,11 @@ class Wavemeter(object):
         self.cache_loc = 0
         self.cache_first_pass = True
         self.cache_freqs = np.empty(self.cache_size, dtype=np.float64)
+        # The same measurements before the calibration correction.  A lock loop
+        # watching the calibration laser itself has to read these: that laser's
+        # drift is what builds calib_err_cache, so the correction subtracts the
+        # very motion the lock is trying to detect.
+        self.cache_raw_freqs = np.empty(self.cache_size, dtype=np.float64)
         self.cache_amps = np.empty(self.cache_size, dtype=np.float64)
         self.cache_times = np.empty(self.cache_size, dtype=np.float64)
         self.cache_statuses = [None for _ in range(cache_n_measurements)]
@@ -73,6 +78,7 @@ class Wavemeter(object):
             if wavelength > 200:
                 now = time()
                 raw_freq = self.c / wavelength
+                freq = raw_freq
                 if self.calib: 
                     if np.abs(raw_freq - self.calib) < self.calib_tol:
                         self.calib_err_cache[self.calib_cache_loc] = raw_freq - self.calib
@@ -96,11 +102,12 @@ class Wavemeter(object):
                         else:
                             avg_err = np.mean(self.calib_err_cache)
                     prop = raw_freq / self.calib
-                    raw_freq -= avg_err * prop
+                    freq = raw_freq - avg_err * prop
                 with self.data_lock:
                     cache_location = self.cache_loc
                     # print(cache_location)
-                    self.cache_freqs[cache_location] = raw_freq
+                    self.cache_freqs[cache_location] = freq
+                    self.cache_raw_freqs[cache_location] = raw_freq
                     self.cache_amps[cache_location] = saturation
                     self.cache_times[cache_location] = now
                     self.cache_statuses[cache_location] = status
@@ -187,6 +194,30 @@ class Wavemeter(object):
         else:
             return [], [], [], []
     
+    def get_all_cached(self):
+        """get_all_data() plus the uncalibrated frequencies.
+
+        Both frequency arrays come from a single locked read, so they are index
+        aligned; calling get_all_data() twice would not be.
+        """
+        with self.data_lock:
+            cache_location = self.cache_loc
+            if self.cache_first_pass:
+                freqs = self.cache_freqs[:cache_location].copy()
+                raw_freqs = self.cache_raw_freqs[:cache_location].copy()
+                amps = self.cache_amps[:cache_location].copy()
+                statuses = self.cache_statuses[:cache_location].copy()
+                times = self.cache_times[:cache_location].copy()
+            else:
+                freqs = self.cache_freqs.copy()
+                raw_freqs = self.cache_raw_freqs.copy()
+                amps = self.cache_amps.copy()
+                statuses = self.cache_statuses.copy()
+                times = self.cache_times.copy()
+        idxs = np.argsort(times)
+        res_statuses = [statuses[i] for i in idxs]
+        return freqs[idxs], raw_freqs[idxs], amps[idxs], res_statuses, times[idxs]
+
     def get_wavemeter_error(self):
         if self.calib:
             with self.calib_lock:

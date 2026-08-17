@@ -11,8 +11,14 @@ This module walks the buffer newest-first and reports only the most recent
 sample of each distinct frequency, so a client can read one number per laser
 instead of the whole 2000-sample history served by ``/data``.
 
+Calibrated and uncalibrated frequencies are both reported, and ``use_raw``
+picks which one drives the matching, the median and the detuning.  A lock loop
+watching the *calibration* laser must use the uncalibrated values: that laser's
+own excursion is what fills ``calib_err_cache``, so the correction quietly
+subtracts the drift the lock exists to notice.
+
 The functions here are pure -- they take the arrays returned by
-``Wavemeter.get_all_data()`` and no hardware -- so they can be exercised
+``Wavemeter.get_all_cached()`` and no hardware -- so they can be exercised
 without a wavemeter attached.
 """
 
@@ -45,19 +51,24 @@ def _usable_indices(freqs, amps, times, now, min_amp, max_age_s):
     return order[fresh]
 
 
-def _summarise(freqs, amps, statuses, times, idxs, now):
+def _summarise(freqs, raw_freqs, amps, statuses, times, idxs, now, use_raw):
     """Build the report for one laser from its sample indices, newest first."""
     newest = idxs[0]
-    values = freqs[idxs]
-    freq = float(freqs[newest])
     status = statuses[newest]
+    selected = raw_freqs if use_raw else freqs
+    freq = float(selected[newest])
 
+    # The median is what a client should lock against: it rejects the occasional
+    # bad read without lagging like a mean over a long window.
     return {
-        'freq_GHz': freq,
-        # The median is what a client should lock against: it rejects the
-        # occasional bad read without lagging like a mean over a long window.
-        'median_GHz': float(np.median(values)),
-        'std_MHz': float(np.std(values) * 1e3) if len(values) > 1 else 0.0,
+        'freq_GHz': float(freqs[newest]),
+        'median_GHz': float(np.median(freqs[idxs])),
+        'raw_freq_GHz': float(raw_freqs[newest]),
+        'raw_median_GHz': float(np.median(raw_freqs[idxs])),
+        # Which pair the caller asked for, so a reading is never ambiguous
+        # about whether the calibration correction is in it.
+        'used': 'raw' if use_raw else 'calibrated',
+        'std_MHz': float(np.std(selected[idxs]) * 1e3) if len(idxs) > 1 else 0.0,
         'n': int(len(idxs)),
         'wavelength_nm': C / freq if freq else None,
         'amp': float(amps[newest]),
@@ -67,40 +78,44 @@ def _summarise(freqs, amps, statuses, times, idxs, now):
     }
 
 
-def latest_frequencies(freqs, amps, statuses, times, now,
+def latest_frequencies(freqs, raw_freqs, amps, statuses, times, now,
+                       use_raw=False,
                        cluster_tol_GHz=DEFAULT_CLUSTER_TOL_GHZ,
                        min_amp=DEFAULT_MIN_AMP,
                        max_age_s=DEFAULT_MAX_AGE_S,
                        n_average=DEFAULT_N_AVERAGE):
     """Latest reading of every laser currently on the wavemeter.
 
-    Returns a list of report dicts, brightest-recent first in discovery order
-    (i.e. ordered by how recently each laser was sampled).
+    Returns a list of report dicts in discovery order, i.e. ordered by how
+    recently each laser was sampled.
     """
-    freqs, amps, times = np.asarray(freqs, dtype=float), \
-        np.asarray(amps, dtype=float), np.asarray(times, dtype=float)
+    freqs, raw_freqs, amps, times = np.asarray(freqs, dtype=float), \
+        np.asarray(raw_freqs, dtype=float), np.asarray(amps, dtype=float), \
+        np.asarray(times, dtype=float)
 
     if len(freqs) == 0:
         return []
 
+    selected = raw_freqs if use_raw else freqs
     clusters = []       # newest frequency seen for each laser
     members = []        # sample indices belonging to it, newest first
 
     for i in _usable_indices(freqs, amps, times, now, min_amp, max_age_s):
         for k, seed in enumerate(clusters):
-            if abs(freqs[i] - seed) < cluster_tol_GHz:
+            if abs(selected[i] - seed) < cluster_tol_GHz:
                 if len(members[k]) < n_average:
                     members[k].append(i)
                 break
         else:
-            clusters.append(freqs[i])
+            clusters.append(selected[i])
             members.append([i])
 
-    return [_summarise(freqs, amps, statuses, times, idxs, now)
+    return [_summarise(freqs, raw_freqs, amps, statuses, times, idxs, now, use_raw)
             for idxs in members]
 
 
-def latest_near(freqs, amps, statuses, times, now, target_GHz, tol_GHz,
+def latest_near(freqs, raw_freqs, amps, statuses, times, now,
+                target_GHz, tol_GHz, use_raw=False,
                 min_amp=DEFAULT_MIN_AMP,
                 max_age_s=DEFAULT_MAX_AGE_S,
                 n_average=DEFAULT_N_AVERAGE):
@@ -108,22 +123,26 @@ def latest_near(freqs, amps, statuses, times, now, target_GHz, tol_GHz,
 
     This is the query a lock loop wants: one request answers "where is my laser
     right now, and is it still inside my window?".  ``detuning_MHz`` is measured
-    from the median, signed so that positive means above the target.
+    from the median of whichever frequency ``use_raw`` selects, signed so that
+    positive means above the target.
     """
-    freqs, amps, times = np.asarray(freqs, dtype=float), \
-        np.asarray(amps, dtype=float), np.asarray(times, dtype=float)
+    freqs, raw_freqs, amps, times = np.asarray(freqs, dtype=float), \
+        np.asarray(raw_freqs, dtype=float), np.asarray(amps, dtype=float), \
+        np.asarray(times, dtype=float)
 
     if len(freqs) == 0:
         return None
 
+    selected = raw_freqs if use_raw else freqs
     idxs = [i for i in _usable_indices(freqs, amps, times, now, min_amp, max_age_s)
-            if abs(freqs[i] - target_GHz) <= tol_GHz][:n_average]
+            if abs(selected[i] - target_GHz) <= tol_GHz][:n_average]
 
     if not idxs:
         return None
 
-    report = _summarise(freqs, amps, statuses, times, idxs, now)
+    report = _summarise(freqs, raw_freqs, amps, statuses, times, idxs, now, use_raw)
+    median = report['raw_median_GHz'] if use_raw else report['median_GHz']
     report['target_GHz'] = float(target_GHz)
     report['tol_GHz'] = float(tol_GHz)
-    report['detuning_MHz'] = (report['median_GHz'] - float(target_GHz)) * 1e3
+    report['detuning_MHz'] = (median - float(target_GHz)) * 1e3
     return report

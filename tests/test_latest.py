@@ -29,21 +29,30 @@ def check(name, condition, detail=''):
         failures.append(name)
 
 
-def make_stream(now, seconds=2.0, jitter_MHz=2.0, dark=(), seed=0):
-    """Interleaved measurements, newest at the end, as get_all_data returns."""
+def make_stream(now, seconds=2.0, jitter_MHz=2.0, dark=(), seed=0,
+                drift_GHz=0.0, drifting=None):
+    """Interleaved measurements, newest at the end, as get_all_cached returns.
+
+    ``drift_GHz`` moves ``drifting`` off its nominal frequency and, as the real
+    calibration loop does when that laser is the calibration reference, hides
+    the excursion from the calibrated array while leaving it in the raw one.
+    """
     rng = np.random.default_rng(seed)
     n = int(seconds * SAMPLE_HZ)
     times = now - np.arange(n)[::-1] / SAMPLE_HZ
 
-    freqs, amps = [], []
-    for i, t in enumerate(times):
+    freqs, raw_freqs, amps = [], [], []
+    for t in times:
         # Which switch position is selected at this instant.
         laser = LASERS[int(t * SWITCH_HZ) % len(LASERS)]
-        freqs.append(laser + rng.normal(0, jitter_MHz * 1e-3))
+        noise = rng.normal(0, jitter_MHz * 1e-3)
+        shift = drift_GHz if laser == drifting else 0.0
+        raw_freqs.append(laser + shift + noise)
+        freqs.append(laser + noise)
         amps.append(0.02 if laser in dark else 0.6)
 
     statuses = [0] * n
-    return np.array(freqs), np.array(amps), statuses, times
+    return np.array(freqs), np.array(raw_freqs), np.array(amps), statuses, times
 
 
 now = 1_700_000_000.0
@@ -78,7 +87,7 @@ check('near query misses',
       latest_near(*stale, now, LASERS[0], 1.0) is None)
 
 print('empty cache')
-empty = (np.array([]), np.array([]), [], np.array([]))
+empty = (np.array([]), np.array([]), np.array([]), [], np.array([]))
 check('listing empty', latest_frequencies(*empty, now) == [])
 check('near query None', latest_near(*empty, now, LASERS[0], 1.0) is None)
 
@@ -108,10 +117,32 @@ one = latest_near(*stream, now, LASERS[0], 0.05)
 check('only the targeted laser', one is not None
       and abs(one['median_GHz'] - LASERS[0]) < 0.05)
 
+print("a drifting calibration laser is visible only in the raw frequency")
+drifted = make_stream(now, drift_GHz=0.05, drifting=LASERS[1])  # +50 MHz
+calibrated = latest_near(*drifted, now, LASERS[1], 0.5)
+raw = latest_near(*drifted, now, LASERS[1], 0.5, use_raw=True)
+check('calibrated reading looks on-setpoint',
+      abs(calibrated['detuning_MHz']) < 5,
+      '(got %.1f MHz)' % calibrated['detuning_MHz'])
+check('raw reading shows the drift',
+      abs(raw['detuning_MHz'] - 50) < 5,
+      '(got %.1f MHz)' % raw['detuning_MHz'])
+check('both frequencies reported either way',
+      abs(calibrated['raw_freq_GHz'] - raw['raw_freq_GHz']) < 0.01
+      and abs(calibrated['freq_GHz'] - raw['freq_GHz']) < 0.01)
+check('selection labelled',
+      calibrated['used'] == 'calibrated' and raw['used'] == 'raw')
+
+print('raw and calibrated agree for every other laser')
+one = latest_near(*drifted, now, LASERS[2], 0.5, use_raw=True)
+check('undrifted laser unaffected', abs(one['detuning_MHz']) < 5,
+      '(got %.1f MHz)' % one['detuning_MHz'])
+
 print('json-safe types')
 one = latest_near(*stream, now, target, 1.0)
+one = latest_near(*stream, now, target, 1.0)
 check('plain python scalars',
-      all(isinstance(v, (float, int, type(None))) for v in one.values()),
+      all(isinstance(v, (float, int, str, type(None))) for v in one.values()),
       '(%s)' % {k: type(v).__name__ for k, v in one.items()})
 
 print()

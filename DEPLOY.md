@@ -138,8 +138,31 @@ default 0.01) for the listing form.
 
 A frequency is reported as the newest sample (`freq_GHz`) and as the median of
 the newest `n` (`median_GHz`, with `std_MHz` as the spread). Lock against the
-median: it rejects the occasional bad read without lagging. Frequencies carry
-the calibration correction from `data/current_calibration.yml`.
+median: it rejects the occasional bad read without lagging.
+
+### Calibrated vs uncalibrated
+
+Every entry carries both `freq_GHz` / `median_GHz` (with the calibration
+correction from `data/current_calibration.yml`) and `raw_freq_GHz` /
+`raw_median_GHz` (without it). `raw=1` makes the uncalibrated pair drive the
+matching, the median and the detuning, and `used` / `using` say which was
+applied so a reading is never ambiguous.
+
+**A lock watching the calibration laser must pass `raw=1`.** The correction is
+derived from that laser: each measurement within `calib_tol` of the reference
+goes into `calib_err_cache`, and the average is subtracted back off. If the
+reference drifts, its own drift fills that cache and is subtracted away, so the
+calibrated frequency stays pinned near the setpoint while the laser walks off.
+`tests/test_server_routes.py` demonstrates it — a 50 MHz excursion on the
+calibration laser reads as ~0 MHz detuning calibrated and +50 MHz raw.
+
+This matters right now: the stored calibration is STIRAP 970 (309602.628 GHz),
+which is also the laser linien is being taught to relock. Two ways out, and
+they compose:
+
+- Poll with `raw=1`, which is what the linien lock does.
+- Calibrate against a laser that is not the one being locked, so a drift in the
+  laser under test cannot feed back into the correction.
 
 `found: false` from the targeted form is a normal answer, not an error — the
 laser may simply be dark. Callers should treat it as "unknown", not "off
@@ -150,10 +173,12 @@ resonance".
 Poll the LAN address directly:
 
 ```
-http://192.168.0.119:8050/api/latest?freq=508848.92&tol=1.0
+http://192.168.0.119:8050/api/latest?freq=309602.628&tol=1.0&raw=1
 ```
 
-not `https://wavemeter.nigrp.org`. The RedPitaya's CA bundle is old enough that
+with `raw=1` for the reason above,
+
+and not `https://wavemeter.nigrp.org`. The RedPitaya's CA bundle is old enough that
 a Let's Encrypt chain may not validate, and going through nginx puts DNS and a
 second machine in the path of the lock loop.
 

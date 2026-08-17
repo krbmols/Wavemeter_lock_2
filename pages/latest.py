@@ -20,8 +20,8 @@ LOW_AMP = 0.1
 
 REFRESH_MS = 500
 
-COLUMNS = ['Frequency (GHz)', 'Wavelength (nm)', 'Jitter (MHz)',
-           'Saturation', 'Age (ms)']
+COLUMNS = ['Frequency (GHz)', 'Uncalibrated (GHz)', 'Wavelength (nm)',
+           'Jitter (MHz)', 'Saturation', 'Age (ms)']
 
 
 def _wavemeter():
@@ -41,8 +41,15 @@ layout = dbc.Container([
         html.Code('/api/latest'),
         ' for all lasers, ',
         html.Code('/api/latest?freq=<GHz>&tol=<GHz>'),
-        ' for one.'
+        ' for one, ',
+        html.Code('&raw=1'),
+        ' to match on the uncalibrated frequency.'
     ], className='text-center text-muted mt-3'),
+    html.Div('The uncalibrated column is the measurement before the '
+             'calibration correction. A lock watching the calibration laser '
+             'itself must use it: that laser\u2019s drift is what builds the '
+             'correction, so the calibrated column hides it.',
+             className='text-center text-muted fst-italic mt-2 small'),
     dcc.Interval(id='latest-refresh', interval=REFRESH_MS)
 ], fluid=True)
 
@@ -52,8 +59,7 @@ layout = dbc.Container([
     Input('latest-refresh', 'n_intervals')
 )
 def update_latest_table(n_intervals):
-    freqs, amps, statuses, times = _wavemeter().get_all_data()
-    lasers = latest_frequencies(freqs, amps, statuses, times, time())
+    lasers = latest_frequencies(*_wavemeter().get_all_cached(), time())
 
     if not lasers:
         return html.Div(
@@ -70,6 +76,7 @@ def update_latest_table(n_intervals):
         dim = laser['amp'] < LOW_AMP
         rows.append(html.Tr([
             html.Td('%.3f' % laser['freq_GHz'], className='fw-bold'),
+            html.Td('%.3f' % laser['raw_freq_GHz'], className='text-muted'),
             html.Td('%.1f' % laser['wavelength_nm']),
             html.Td('%.1f' % laser['std_MHz']),
             html.Td('%.1f%%' % (laser['amp'] * 100),

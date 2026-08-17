@@ -23,7 +23,14 @@ except ImportError:
 
 C = 299792458.0
 SWITCH_HZ = 500.0
-LASERS = [309602.626, 434922.336, 508848.922]
+
+# 309602.628 is the calibration laser in data/current_calibration.yml, so it is
+# the one whose drift the calibration correction hides.  Start it on setpoint.
+CALIB_LASER = 309602.628
+LASERS = [CALIB_LASER, 434922.336, 508848.922]
+
+# Nudged at runtime to drift the calibration laser mid-test.
+drift_GHz = 0.0
 
 failures = []
 
@@ -45,6 +52,8 @@ class FakeBristol:
     def get_measurement(self):
         now = time.time()
         freq = LASERS[int(now * SWITCH_HZ) % len(LASERS)]
+        if freq == CALIB_LASER:
+            freq += drift_GHz
         # (wavelength nm, saturation, status word, scan index)
         return C / freq, 0.6, 4, 0
 
@@ -100,6 +109,34 @@ check('non-numeric rejected',
 check('freq without tol rejected',
       client.get('/api/latest?freq=500000').status_code == 400)
 check('n < 1 rejected', client.get('/api/latest?n=0').status_code == 400)
+
+print('a drifting calibration laser')
+# Everything above ran with the laser on setpoint.  Move it 50 MHz and let the
+# correction converge on the new offset, as it would if the laser unlocked.
+drift_GHz = 0.05
+time.sleep(0.5)
+
+res = client.get('/api/latest?freq=%f&tol=0.5' % CALIB_LASER)
+calibrated = json.loads(res.data)['laser']
+res = client.get('/api/latest?freq=%f&tol=0.5&raw=1' % CALIB_LASER)
+raw = json.loads(res.data)['laser']
+
+check('both found', calibrated is not None and raw is not None)
+check('calibrated reading looks on-setpoint',
+      abs(calibrated['detuning_MHz']) < 10,
+      '(got %.1f MHz -- the correction absorbed the drift)'
+      % calibrated['detuning_MHz'])
+check('raw reading shows the drift',
+      abs(raw['detuning_MHz'] - 50) < 10,
+      '(got %.1f MHz)' % raw['detuning_MHz'])
+check('selection labelled',
+      calibrated['used'] == 'calibrated' and raw['used'] == 'raw')
+check('both frequencies always present',
+      'raw_freq_GHz' in calibrated and 'freq_GHz' in raw)
+check('listing reports which it used',
+      json.loads(client.get('/api/latest?raw=1').data)['using'] == 'raw')
+
+drift_GHz = 0.0
 
 print('the /data route still works')
 res = client.get('/data')

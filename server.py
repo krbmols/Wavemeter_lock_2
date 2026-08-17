@@ -221,6 +221,10 @@ def serve_latest_data():
         GET /api/latest?freq=508848.92&tol=1.0
             -> just the laser within 1 GHz of 508848.92 GHz, with its detuning
 
+    Both frequencies are always reported.  ``raw=1`` makes the uncalibrated one
+    drive the matching, the median and the detuning, which is what a lock loop
+    on the calibration laser needs -- see DEPLOY.md.
+
     Optional in both forms: ``max_age`` (s), ``min_amp``, ``n`` (samples to
     reduce for the median), and ``cluster_tol`` (GHz) for the listing form.
     """
@@ -231,6 +235,7 @@ def serve_latest_data():
         cluster_tol = _float_arg('cluster_tol', DEFAULT_CLUSTER_TOL_GHZ)
         target = _float_arg('freq', None)
         tol = _float_arg('tol', None)
+        use_raw = request.args.get('raw', '0') not in ('0', '', 'false', 'False')
     except ValueError:
         return jsonify({'error': 'query parameters must be numeric'}), 400
 
@@ -239,7 +244,7 @@ def serve_latest_data():
     if target is not None and tol is None:
         return jsonify({'error': 'freq requires tol'}), 400
 
-    freqs, amps, statuses, times = wavemeter.get_all_data()
+    freqs, raw_freqs, amps, statuses, times = wavemeter.get_all_cached()
     now = unix_time()
 
     calib_err = wavemeter.get_wavemeter_error()
@@ -247,19 +252,21 @@ def serve_latest_data():
         'time': now,
         'max_age_s': max_age_s,
         'min_amp': min_amp,
+        'using': 'raw' if use_raw else 'calibrated',
         'calibration_error_MHz': None if calib_err is None else calib_err * 1e3,
     }
 
     if target is None:
         result['lasers'] = latest_frequencies(
-            freqs, amps, statuses, times, now,
+            freqs, raw_freqs, amps, statuses, times, now, use_raw=use_raw,
             cluster_tol_GHz=cluster_tol, min_amp=min_amp,
             max_age_s=max_age_s, n_average=n_average
         )
     else:
         laser = latest_near(
-            freqs, amps, statuses, times, now, target, tol,
-            min_amp=min_amp, max_age_s=max_age_s, n_average=n_average
+            freqs, raw_freqs, amps, statuses, times, now, target, tol,
+            use_raw=use_raw, min_amp=min_amp, max_age_s=max_age_s,
+            n_average=n_average
         )
         # A miss is a normal answer -- the laser may simply be dark -- so it is
         # reported as found=false rather than as an HTTP error.
@@ -267,8 +274,8 @@ def serve_latest_data():
         result['laser'] = laser
         if laser is None:
             result['reason'] = (
-                'no reading within %g GHz of %g GHz in the last %g s'
-                % (tol, target, max_age_s)
+                'no %s reading within %g GHz of %g GHz in the last %g s'
+                % (result['using'], tol, target, max_age_s)
             )
 
     return jsonify(result)
