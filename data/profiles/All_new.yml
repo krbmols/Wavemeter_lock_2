@@ -1,0 +1,79 @@
+freqs:
+- 713288.51
+- 508332.5
+- 467063.666
+- 462910.877
+- 434922.336
+- 328966.612
+- 320020.585
+- 309602.626
+- 296401.665
+- 282286.05
+- 508848.194
+- 366219.6
+lock_tols:
+- 5
+- 5
+- 5
+- 5
+- 5
+- 5
+- 5
+- 5
+- 5
+- 5
+- 5
+- 5
+n_figs: 12
+names:
+- KRb Ryd 420
+- Na D1
+- 1.5 STIRAP 642
+- KRb REMPI 650
+- KRb STIRAP 690
+- Cs Ryd 911
+- 1.5 STIRAP 922
+- KRb STIRAP 970
+- KRb Ryd 1011
+- Cs Ryd 1062
+- Na Ryd 589
+- Na Ryd 820
+nptss:
+- 100
+- 100
+- 100
+- 100
+- 100
+- 100
+- 100
+- 100
+- 100
+- 100
+- 100
+- 100
+tols:
+- 1
+- 1
+- 1
+- 100
+- 1
+- 4
+- 1
+- 1
+- 1
+- 100
+- 10
+- 100
+track_locks:
+- false
+- false
+- false
+- false
+- true
+- false
+- false
+- false
+- false
+- false
+- false
+- null

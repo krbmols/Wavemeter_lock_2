@@ -1,0 +1,37 @@
+freqs:
+- 508332.5
+- 328966.605
+- 282286.06
+- 508848.593
+- 366192.06
+lock_tols:
+- 15
+- 15
+- 40
+- 15
+- 18
+n_figs: 5
+names:
+- Na D1
+- Cs Ryd 911
+- Cs Ryd 1062
+- Na Ryd 589
+- Na Ryd 820
+nptss:
+- 100
+- 100
+- 100
+- 100
+- 100
+tols:
+- 1
+- 4
+- 100
+- 100
+- 1000
+track_locks:
+- false
+- true
+- true
+- true
+- true

@@ -1,0 +1,31 @@
+freqs:
+- 282286.04
+- 328966.614
+- 434922.336
+- 309602.626
+lock_tols:
+- 25
+- 25
+- 5
+- 5
+n_figs: 4
+names:
+- Cs Ryd 1062
+- Cs Ryd 911
+- KRb STIRAP 690
+- KRb STIRAP 970
+nptss:
+- 100
+- 100
+- 100
+- 100
+tols:
+- 100
+- 100
+- 1
+- 1
+track_locks:
+- true
+- true
+- false
+- false

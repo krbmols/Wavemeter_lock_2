@@ -1,0 +1,8 @@
+x=importdata("alpha.csv");
+
+
+
+
+
+
+

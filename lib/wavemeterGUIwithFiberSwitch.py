@@ -5,7 +5,7 @@ Created on Fri Oct 22 09:57:54 2021
 @author: Gabriel Patenotte, inspired by Lingbang and Bryant
 """
 import sys
-import win32com.client as wincl
+#import win32com.client as wincl
 import winsound
 import serial
 import threading

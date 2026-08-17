@@ -1,0 +1,37 @@
+freqs:
+- 713288.51
+- 434922.336
+- 309602.626
+- 296401.665
+- 449844.234
+lock_tols:
+- 5
+- 5
+- 5
+- 5
+- 5
+n_figs: 5
+names:
+- KRb Ryd 420
+- KRb STIRAP 690
+- KRb STIRAP 970
+- KRb Ryd 1011
+- KRb 670
+nptss:
+- 100
+- 100
+- 100
+- 100
+- 100
+tols:
+- 1
+- 1
+- 1
+- 1
+- 10
+track_locks:
+- false
+- false
+- false
+- false
+- true
