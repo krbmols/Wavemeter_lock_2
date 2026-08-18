@@ -41,8 +41,14 @@ app = Dash(title='Fast Wavemeter', update_title=None, prevent_initial_callbacks=
 wavemeter = Wavemeter(port='COM10', cache_n_measurements = 2000, calibration=calib_freq, calibration_tol=calib_tol)
 # Neither directory is created anywhere else, and both are written to as soon
 # as a browser connects, so make sure they exist before the workers start.
-os.makedirs(logs_dir, exist_ok=True)
-os.makedirs(save_directory, exist_ok=True)
+# A directory that cannot be created is reported and left alone: losing the
+# CSV log is worth a warning, but not worth refusing to serve the wavemeter.
+for _directory in (logs_dir, save_directory):
+    try:
+        os.makedirs(_directory, exist_ok=True)
+    except OSError as _error:
+        print('WARNING: cannot create %s (%s); writes there will fail'
+              % (_directory, _error))
 
 ds = DataSaver(wavemeter, save_directory)
 # wavemeter = Wavemeter(targets=np.array([713289.100, 650000, 508848.922]))
